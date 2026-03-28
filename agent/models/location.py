@@ -1,18 +1,17 @@
 from sqlalchemy import (
-    Column, Integer, String, Date, DateTime,
-    Boolean, Enum, UniqueConstraint, CheckConstraint
+    Column, Integer, BigInteger, String, DateTime,
+    Boolean, Enum, Float
 )
-from sqlalchemy.orm import declarative_base
+from db.base import Base
 from datetime import datetime
 
-Base = declarative_base()
 
 class Location(Base):
     __tablename__ = "locations"
 
-    id = Column(BigInteger, primary_key=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
 
-    name = Column(String(255), nullable=False)  
+    name = Column(String(255), nullable=False)
     # "Mumbai Port", "Suez Canal", "Shanghai"
 
     type = Column(Enum(
@@ -36,7 +35,7 @@ class Location(Base):
     # 3 = medium
     # 4 = low
 
-    weather_poll_interval_hours = Column(Integer, nullable=False)
+    weather_poll_interval_hours = Column(Integer, nullable=False, default=6)
     # Instead of hardcoding logic in code
 
     is_active = Column(Boolean, default=True)

@@ -1,0 +1,44 @@
+Fetched 10 articles
+  - Earnings call transcript: Cheniere Energy Q4 2025 shows strong results
+  - Earnings call transcript: Cheniere Energy Q4 2025 shows strong results
+  - Earnings call transcript: Cheniere Energy Q4 2025 shows strong results
+  - Earnings call transcript: Cheniere Energy Q4 2025 shows strong results
+  - Earnings call transcript: Cheniere Energy Q4 2025 shows strong results
+  - Earnings call transcript: Cheniere Energy Q4 2025 shows strong results
+  - Earnings call transcript: Cheniere Energy Q4 2025 shows strong results
+  - Earnings call transcript: Cheniere Energy Q4 2025 shows strong results
+  - UK drivers urged to fill up before Sunday as diesel prices could hit 180p per litre
+  - Petrol and diesel prices continue to go up and up - and there may be no immediate end in sight for UK drivers who are looking for cheaper prices
+  - US Judge Suspends Government Sanctions on Anthropic, Court Order Says
+  - A US federal judge has put the Trump administration?s sanctions on Anthropic on hold, ruling that the measures likely broke the law by effectively punishing the AI company for publicly questioning how its technology is being used by the Pentagon. In the Northern District of California, Judge Rita Lin granted Anthropic?s request for a preliminary [...]
+  - VentureBeat AI: Unpacking the Latest in Artificial Intelligence Innovation
+  - It feels like every week there?s something new happening in the world of artificial intelligence. This time around,... The post VentureBeat AI: Unpacking the Latest in Artificial Intelligence Innovation appeared first on TechAnnouncer .
+  - The Smartest Volkswagen Arrives! ID. UNYX 08 Opens Pre-sales, Starting from 239,900 Yuan
+  - body { font-size: 16px; line-height: 34px; ...
+  - We cannot control oil futures - but we can control our future
+  - It has been one month since the armed conflict with Iran began, and every day we are forced to acknowledge that the true cost of war is measured in lives and livelihoods. Though we are thousands of miles away, we...
+  - Minglewood Hall up for sale
+  - The iconic venue space within Minglewood Plaza in Midtown Memphis is now listed for sale.
+2026-03-28 19:20:18,543 INFO sqlalchemy.engine.Engine select pg_catalog.version()
+2026-03-28 19:20:18,543 INFO sqlalchemy.engine.Engine [raw sql] {}
+2026-03-28 19:20:18,658 INFO sqlalchemy.engine.Engine select current_schema()
+2026-03-28 19:20:18,658 INFO sqlalchemy.engine.Engine [raw sql] {}
+2026-03-28 19:20:18,777 INFO sqlalchemy.engine.Engine show standard_conforming_strings
+2026-03-28 19:20:18,777 INFO sqlalchemy.engine.Engine [raw sql] {}
+2026-03-28 19:20:18,879 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2026-03-28 19:20:18,882 INFO sqlalchemy.engine.Engine SELECT news.id AS news_id, news.article_id AS news_article_id, news.link AS news_link, news.title AS news_title, news.description AS news_description, news.content AS news_content, news.keywords AS news_keywords, news.creator AS news_creator, news.language AS news_language, news.country AS news_country, news.category AS news_category, news.datatype AS news_datatype, news."pubDate" AS "news_pubDate", news."pubDateTZ" AS "news_pubDateTZ", news.fetched_at AS news_fetched_at, news.image_url AS news_image_url, news.video_url AS news_video_url, news.source_id AS news_source_id, news.source_name AS news_source_name, news.source_priority AS news_source_priority, news.source_url AS news_source_url, news.source_icon AS news_source_icon, news.sentiment AS news_sentiment, news.sentiment_stats AS news_sentiment_stats, news.ai_tag AS news_ai_tag, news.ai_region AS news_ai_region, news.ai_org AS news_ai_org, news.ai_summary AS news_ai_summary, news.duplicate AS news_duplicate, news.consequence AS news_consequence, news.created_at AS news_created_at, news.updated_at AS news_updated_at 
+FROM news 
+WHERE news.article_id = %(article_id_1)s 
+ LIMIT %(param_1)s
+2026-03-28 19:20:18,882 INFO sqlalchemy.engine.Engine [generated in 0.00029s] {'article_id_1': 'bbc319827618940aaf8f0ef02e3a4e25', 'param_1': 1}
+2026-03-28 19:20:19,004 INFO sqlalchemy.engine.Engine ROLLBACK
+Error storing news: (psycopg2.errors.UndefinedTable) relation "news" does not exist
+LINE 2: FROM news 
+             ^
+
+[SQL: SELECT news.id AS news_id, news.article_id AS news_article_id, news.link AS news_link, news.title AS news_title, news.description AS news_description, news.content AS news_content, news.keywords AS news_keywords, news.creator AS news_creator, news.language AS news_language, news.country AS news_country, news.category AS news_category, news.datatype AS news_datatype, news."pubDate" AS "news_pubDate", news."pubDateTZ" AS "news_pubDateTZ", news.fetched_at AS news_fetched_at, news.image_url AS news_image_url, news.video_url AS news_video_url, news.source_id AS news_source_id, news.source_name AS news_source_name, news.source_priority AS news_source_priority, news.source_url AS news_source_url, news.source_icon AS news_source_icon, news.sentiment AS news_sentiment, news.sentiment_stats AS news_sentiment_stats, news.ai_tag AS news_ai_tag, news.ai_region AS news_ai_region, news.ai_org AS news_ai_org, news.ai_summary AS news_ai_summary, news.duplicate AS news_duplicate, news.consequence AS news_consequence, news.created_at AS news_created_at, news.updated_at AS news_updated_at 
+FROM news 
+WHERE news.article_id = %(article_id_1)s 
+ LIMIT %(param_1)s]
+[parameters: {'article_id_1': 'bbc319827618940aaf8f0ef02e3a4e25', 'param_1': 1}]
+(Background on this error at: https://sqlalche.me/e/20/f405)

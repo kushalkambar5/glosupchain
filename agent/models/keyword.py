@@ -2,15 +2,15 @@ from sqlalchemy import (
     Column, Integer, String, Date, DateTime,
     Boolean, Enum, UniqueConstraint, CheckConstraint
 )
-from sqlalchemy.orm import declarative_base
+from db.base import Base
 from datetime import datetime
 import enum
 
-Base = declarative_base()
 
 class KeywordType(enum.Enum):
     DAILY = "daily"
     ONEDAY = "oneday"
+
 
 class Keyword(Base):
     __tablename__ = "keywords"

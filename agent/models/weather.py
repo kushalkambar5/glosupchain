@@ -1,15 +1,14 @@
 from sqlalchemy import Column, Integer, Float, String, DateTime
-from sqlalchemy.orm import declarative_base
+from db.base import Base
 from datetime import datetime
 
-Base = declarative_base()
 
 class Weather(Base):
     __tablename__ = "weather"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
-    # Location (denormalize for speed)
+    # Location (denormalized for speed)
     location_name = Column(String(100), nullable=False)
     country = Column(String(100), nullable=False)
     latitude = Column(Float, nullable=False)
