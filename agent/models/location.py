@@ -1,9 +1,16 @@
 from sqlalchemy import (
     Column, Integer, BigInteger, String, DateTime,
-    Boolean, Float, UniqueConstraint, Index
+    Boolean, Float, UniqueConstraint, Index, Enum
 )
 from db.base import Base
 from datetime import datetime
+import enum
+
+
+class PriorityType(enum.Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
 
 
 class Location(Base):
@@ -20,7 +27,7 @@ class Location(Base):
     latitude = Column(Float)
     longitude = Column(Float)
 
-    priority = Column(String(20))
+    priority = Column(Enum(PriorityType, native_enum=False), nullable=False)
 
     is_active = Column(Boolean, default=True)
 
