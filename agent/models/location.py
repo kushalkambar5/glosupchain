@@ -1,3 +1,12 @@
+from sqlalchemy import (
+    Column, Integer, String, Date, DateTime,
+    Boolean, Enum, UniqueConstraint, CheckConstraint
+)
+from sqlalchemy.orm import declarative_base
+from datetime import datetime
+
+Base = declarative_base()
+
 class Location(Base):
     __tablename__ = "locations"
 
