@@ -75,8 +75,6 @@ class NewsService:
         results = self.fetch_news(query)
         self.store_news(results, db)
 
-    
-
     def fetch_and_store_daily_news(self, db: Session):
         rules = (
             db.query(KeywordRule)
@@ -110,8 +108,6 @@ class NewsService:
         for rule in rules:
             self.fetch_and_store_news(rule.keyword.word, db)
         
-    
-
     def get_daily_news(self, db: Session):
         cutoff = datetime.utcnow() - timedelta(days=1)
 
@@ -120,6 +116,27 @@ class NewsService:
             .filter(News.created_at >= cutoff, News.type == "daily")
             .all()
         )
+
+    def get_daily_news_for_processing(self, db: Session):
+        cutoff = datetime.utcnow() - timedelta(days=1)
+
+        news_items = (
+            db.query(News)
+            .filter(News.created_at >= cutoff, News.type == "daily")
+            .all()
+        )
+        
+        return [
+            {
+                "article_id": item.article_id,
+                "title": item.title,
+                "description": item.description,
+                "content": item.content,
+                "keywords": item.keywords,
+                "category": item.category
+            }
+            for item in news_items
+        ]
 
     def get_recent_news(self, db: Session, hours=3):
         cutoff = datetime.utcnow() - timedelta(hours=hours)

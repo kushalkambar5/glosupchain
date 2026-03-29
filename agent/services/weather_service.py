@@ -3,6 +3,7 @@ import sys
 import requests
 from datetime import datetime
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 # Add the parent directory to sys.path if run directly so core can be imported
 if __name__ == "__main__":
@@ -64,8 +65,6 @@ class WeatherService:
             # Fallback to isoformat if needed
             return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
 
-    from sqlalchemy import func
-
     def get_latest_weather_all_locations(self, db: Session):
         subquery = (
             db.query(
@@ -86,7 +85,55 @@ class WeatherService:
             .all()
         )
 
+    def get_latest_weather_by_priority(self, db: Session, priority: PriorityType):
+        subquery = (
+            db.query(
+                Weather.location_name,
+                func.max(Weather.recorded_at).label("max_time")
+            )
+            .join(Location, Location.name == Weather.location_name)
+            .filter(
+                Location.priority == priority,
+                Location.is_active == True
+            )
+            .group_by(Weather.location_name)
+            .subquery()
+        )
 
+        return (
+            db.query(Weather)
+            .join(
+                subquery,
+                (Weather.location_name == subquery.c.location_name) &
+                (Weather.recorded_at == subquery.c.max_time)
+            )
+            .all()
+        )
+
+    def fetch_and_store_weather_by_priority(self, db: Session, priority: PriorityType):
+        subquery = (
+            db.query(
+                Weather.location_name,
+                func.max(Weather.recorded_at).label("max_time")
+            )
+            .join(Location, Location.name == Weather.location_name)
+            .filter(
+                Location.priority == priority,
+                Location.is_active == True
+            )
+            .group_by(Weather.location_name)
+            .subquery()
+        )
+
+        return (
+            db.query(Weather)
+            .join(
+                subquery,
+                (Weather.location_name == subquery.c.location_name) &
+                (Weather.recorded_at == subquery.c.max_time)
+            )
+            .all()
+        )
 
 # if __name__ == "__main__":
 #     from db.session import SessionLocal, engine

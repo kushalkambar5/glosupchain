@@ -10,6 +10,7 @@ dependencies = [
     "langchain>=1.2.13",
     "langchain-community>=0.4.1",
     "langchain-core>=1.2.23",
+    "langchain-google-genai>=4.2.1",
     "langgraph>=1.1.3",
     "newsdataapi>=0.1.30",
     "psycopg2-binary>=2.9.11",
