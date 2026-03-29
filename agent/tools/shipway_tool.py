@@ -116,6 +116,24 @@ class SupplyChainState(TypedDict):
     results: Dict[str, dict]
     keywords: List[str]
 
+def fetch_daily_news_node(state: SupplyChainState):
+    """
+    Node that fetches daily news from the external API for all active keywords
+    and stores them in the database before analysis begins.
+    """
+    db = SessionLocal()
+    try:
+        service = NewsService()
+        service.fetch_and_store_daily_news_of_all_keywords(db)
+        print("Successfully fetched daily news from API for all keywords.")
+    except Exception as e:
+        print(f"Error fetching daily news from API: {e}")
+    finally:
+        db.close()
+    
+    return state
+
+
 def analyze_supply_chain_news_node(state: SupplyChainState):
     """
     Node that fetches daily news using the get_daily_news tool,
@@ -314,11 +332,13 @@ def save_analysis_results_node(state: SupplyChainState):
 # --- Build StateGraph ---
 workflow = StateGraph(SupplyChainState)
 
+workflow.add_node("fetch_daily_news", fetch_daily_news_node)
 workflow.add_node("analyze_news", analyze_supply_chain_news_node)
 workflow.add_node("evaluate_news", evaluate_news_impact_node)
 workflow.add_node("save_results", save_analysis_results_node)
 
-workflow.add_edge(START, "analyze_news")
+workflow.add_edge(START, "fetch_daily_news")
+workflow.add_edge("fetch_daily_news", "analyze_news")
 workflow.add_edge("analyze_news", "evaluate_news")
 workflow.add_edge("evaluate_news", "save_results")
 workflow.add_edge("save_results", END)

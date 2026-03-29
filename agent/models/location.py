@@ -27,8 +27,7 @@ class Location(Base):
     latitude = Column(Float)
     longitude = Column(Float)
 
-    priority = Column(Enum(PriorityType, native_enum=False), nullable=False)
-
+    priority = Column(Enum(PriorityType, values_callable=lambda obj: [e.value for e in obj], native_enum=False), nullable=False)
     is_active = Column(Boolean, default=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)

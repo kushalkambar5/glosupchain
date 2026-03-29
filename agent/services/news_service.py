@@ -164,16 +164,3 @@ class NewsService:
         for word in unique_keywords:
             self.fetch_and_store_news(word, db)
 
-
-if __name__ == "__main__":
-    from db.session import SessionLocal, engine
-    from db.base import Base
-    from models.news import News  # Ensure model is registered with Base
-
-    db = SessionLocal()
-    try:
-        service = NewsService()
-        service.fetch_and_store_daily_news_of_all_keywords(db)
-        print("Successfully fetched daily news for all keywords.")
-    finally:
-        db.close()

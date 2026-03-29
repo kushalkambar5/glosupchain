@@ -136,6 +136,18 @@ class WeatherService:
             .all()
         )
 
+    def fetch_and_store_weather(self, city: str, db: Session):
+        weather_data = self.get_weather(city)
+        if "error" not in weather_data:
+            self.store_weather(weather_data, db)
+        else:
+            print(f"Error fetching weather for {city}: {weather_data['error'].get('message', 'Unknown error')}")
+
+    def fetch_and_store_daily_weather_of_all_locations(self, db: Session):
+        locations = db.query(Location).filter(Location.is_active == True).all()
+        for location in locations:
+            self.fetch_and_store_weather(location.name, db)
+
 # if __name__ == "__main__":
 #     from db.session import SessionLocal, engine
 #     from db.base import Base
