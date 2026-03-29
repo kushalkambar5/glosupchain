@@ -64,6 +64,29 @@ class WeatherService:
             # Fallback to isoformat if needed
             return datetime.fromisoformat(date_str.replace("Z", "+00:00"))
 
+    from sqlalchemy import func
+
+    def get_latest_weather_all_locations(self, db: Session):
+        subquery = (
+            db.query(
+                Weather.location_name,
+                func.max(Weather.recorded_at).label("max_time")
+            )
+            .group_by(Weather.location_name)
+            .subquery()
+        )
+
+        return (
+            db.query(Weather)
+            .join(
+                subquery,
+                (Weather.location_name == subquery.c.location_name) &
+                (Weather.recorded_at == subquery.c.max_time)
+            )
+            .all()
+        )
+
+
 
 # if __name__ == "__main__":
 #     from db.session import SessionLocal, engine
