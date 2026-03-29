@@ -1,7 +1,8 @@
 import json
 import langchain
 from langchain.tools import tool
-from services.shipway_service import ShipwayService
+from services.news_service import NewsService
+from services.weather_service import WeatherService
 import langgraph
 from langgraph.graph import StateGraph, START, END
 from models.location import PriorityType
@@ -10,11 +11,14 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langgraph.prebuilt import ToolNode
+from dotenv import load_dotenv
 
 from db.session import SessionLocal
 from models.keyword import Keyword
 from models.shipwaysResult import ShipwayResult
 from models.news import News
+
+load_dotenv()
 
 if "GOOGLE_API_KEY" not in os.environ:
     raise ValueError("GOOGLE_API_KEY environment variable not set.")
@@ -22,50 +26,73 @@ if "GOOGLE_API_KEY" not in os.environ:
 @tool
 def get_daily_news():
     """Get daily news"""
-    shipway_service = ShipwayService()
-    return shipway_service.get_daily_news()
+    db = SessionLocal()
+    try:
+        return NewsService().get_daily_news(db)
+    finally:
+        db.close()
 
 @tool
 def get_recent_news():
     """Get recent news"""
-    shipway_service = ShipwayService()
-    return shipway_service.get_recent_news()
+    db = SessionLocal()
+    try:
+        return NewsService().get_recent_news(db)
+    finally:
+        db.close()
 
 @tool
 def fetch_news(keyword: str):
     """Fetch news based on keyword which may impact supply chain (e.g. port, weather, strike, any city name, country name etc.)"""
-    shipway_service = ShipwayService()
-    return shipway_service.fetch_news(keyword)
+    return NewsService().fetch_news(keyword)
 
 @tool
 def fetch_and_store_daily_news():
     """Fetch and store daily news"""
-    shipway_service = ShipwayService()
-    return shipway_service.fetch_and_store_daily_news()
+    db = SessionLocal()
+    try:
+        NewsService().fetch_and_store_daily_news(db)
+        return "Daily news fetched and stored successfully."
+    finally:
+        db.close()
 
 @tool
 def fetch_and_store_oneday_news():
     """Fetch and store one day news"""
-    shipway_service = ShipwayService()
-    return shipway_service.fetch_and_store_oneday_news()
+    db = SessionLocal()
+    try:
+        NewsService().fetch_and_store_oneday_news(db)
+        return "One day news fetched and stored successfully."
+    finally:
+        db.close()
 
 @tool
 def get_latest_weather_by_priority(priority: PriorityType):
     """Get latest weather by priority"""
-    shipway_service = ShipwayService()
-    return shipway_service.get_latest_weather_by_priority(priority)
+    db = SessionLocal()
+    try:
+        return WeatherService().get_latest_weather_by_priority(db, priority)
+    finally:
+        db.close()
 
 @tool
 def fetch_and_store_weather_by_priority(priority: PriorityType):
     """Fetch and store weather by priority"""
-    shipway_service = ShipwayService()
-    return shipway_service.fetch_and_store_weather_by_priority(priority)
+    db = SessionLocal()
+    try:
+        WeatherService().fetch_and_store_weather_by_priority(db, priority)
+        return "Weather fetched and stored successfully."
+    finally:
+        db.close()
 
 @tool
 def get_daily_news_for_processing():
     """Get daily news for processing"""
-    shipway_service = ShipwayService()
-    return shipway_service.get_daily_news_for_processing()
+    db = SessionLocal()
+    try:
+        return NewsService().get_daily_news_for_processing(db)
+    finally:
+        db.close()
 
 tools = [get_daily_news, get_recent_news, fetch_news, fetch_and_store_daily_news, fetch_and_store_oneday_news, get_latest_weather_by_priority, fetch_and_store_weather_by_priority, get_daily_news_for_processing]
 tool_node = ToolNode(tools)
@@ -95,12 +122,17 @@ def analyze_supply_chain_news_node(state: SupplyChainState):
     sends it to the LLM to identify news that can affect the supply chain,
     and returns a list of their IDs along with the raw news.
     """
-    # Fetch daily news using the tool
     try:
         news_data = get_daily_news_for_processing.invoke({})
     except Exception as e:
         news_data = str(e)
+        return {"supply_chain_news_ids": [], "news": news_data}
+
+    if not isinstance(news_data, list):
+        news_data = [news_data] # fallback
         
+    all_parsed_ids = []
+    
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
          "You are an expert supply chain analyst. "
@@ -113,24 +145,31 @@ def analyze_supply_chain_news_node(state: SupplyChainState):
     ])
     
     chain = prompt | llm | StrOutputParser()
-    result = chain.invoke({"news": str(news_data)})
-    
-    # Parse the JSON response
-    parsed_ids = []
-    try:
-        cleaned_result = result.strip()
-        if cleaned_result.startswith("```json"):
-            cleaned_result = cleaned_result[7:]
-        if cleaned_result.startswith("```"):
-            cleaned_result = cleaned_result[3:]
-        if cleaned_result.endswith("```"):
-            cleaned_result = cleaned_result[:-3]
-        parsed_ids = json.loads(cleaned_result.strip())
-    except Exception as e:
-        print(f"Failed to parse LLM response into JSON: {e}\nResponse was: {result}")
-        parsed_ids = []
+
+    batch_size = 50
+    for i in range(0, len(news_data), batch_size):
+        batch = news_data[i:i+batch_size]
+        result = chain.invoke({"news": json.dumps(batch)})
         
-    return {"supply_chain_news_ids": parsed_ids, "news": news_data}
+        try:
+            cleaned_result = result.strip()
+            if cleaned_result.startswith("```json"):
+                cleaned_result = cleaned_result[7:]
+            if cleaned_result.startswith("```"):
+                cleaned_result = cleaned_result[3:]
+            if cleaned_result.endswith("```"):
+                cleaned_result = cleaned_result[:-3]
+            parsed_ids = json.loads(cleaned_result.strip())
+            
+            if isinstance(parsed_ids, list):
+                all_parsed_ids.extend(parsed_ids)
+        except Exception as e:
+            print(f"Failed to parse LLM response into JSON for batch {i}: {e}\nResponse was: {result}")
+
+    # Remove duplicates just in case
+    all_parsed_ids = list(set(all_parsed_ids))
+        
+    return {"supply_chain_news_ids": all_parsed_ids, "news": news_data}
 
 
 def evaluate_news_impact_node(state: SupplyChainState):
@@ -139,11 +178,17 @@ def evaluate_news_impact_node(state: SupplyChainState):
     requests structured information from Gemini,
     and saves the results to the state.
     """
-    news_data = state.get("news", "")
+    news_data = state.get("news", [])
     target_ids = state.get("supply_chain_news_ids", [])
     
     if not target_ids:
         return {"results": {}, "keywords": []}
+
+    # Filter news data to only involve target_ids to save massive LLM tokens
+    if isinstance(news_data, list):
+        target_news = [n for n in news_data if isinstance(n, dict) and n.get("article_id") in target_ids]
+    else:
+        target_news = news_data
         
     prompt = ChatPromptTemplate.from_messages([
         ("system", 
@@ -168,25 +213,46 @@ def evaluate_news_impact_node(state: SupplyChainState):
     ])
     
     chain = prompt | llm | StrOutputParser()
-    result = chain.invoke({"news": str(news_data), "ids": json.dumps(target_ids)})
     
-    parsed_json = {}
-    try:
-        cleaned_result = result.strip()
-        if cleaned_result.startswith("```json"):
-            cleaned_result = cleaned_result[7:]
-        if cleaned_result.startswith("```"):
-            cleaned_result = cleaned_result[3:]
-        if cleaned_result.endswith("```"):
-            cleaned_result = cleaned_result[:-3]
-        parsed_json = json.loads(cleaned_result.strip())
-    except Exception as e:
-        print(f"Failed to parse LLM detailed results into JSON: {e}\nResponse was: {result}")
-        parsed_json = {"results": {}, "keywords": []}
+    all_results = {}
+    all_keywords = []
+
+    batch_size = 50
+    for i in range(0, len(target_ids), batch_size):
+        batch_ids = target_ids[i:i+batch_size]
+        
+        # Pull only the exact matched news objects for this sub-batch
+        if isinstance(target_news, list):
+            batch_news = [n for n in target_news if n.get("article_id") in batch_ids]
+        else:
+            batch_news = target_news
+            
+        result = chain.invoke({"news": json.dumps(batch_news), "ids": json.dumps(batch_ids)})
+        
+        try:
+            cleaned_result = result.strip()
+            if cleaned_result.startswith("```json"):
+                cleaned_result = cleaned_result[7:]
+            if cleaned_result.startswith("```"):
+                cleaned_result = cleaned_result[3:]
+            if cleaned_result.endswith("```"):
+                cleaned_result = cleaned_result[:-3]
+            parsed_json = json.loads(cleaned_result.strip())
+            
+            if "results" in parsed_json and isinstance(parsed_json["results"], dict):
+                all_results.update(parsed_json["results"])
+                
+            if "keywords" in parsed_json and isinstance(parsed_json["keywords"], list):
+                all_keywords.extend(parsed_json["keywords"])
+        except Exception as e:
+            print(f"Failed to parse LLM detailed results into JSON for batch {i}: {e}\nResponse was: {result}")
+            
+    # Guarantee unique keywords
+    all_keywords = list(set(all_keywords))
         
     return {
-        "results": parsed_json.get("results", {}), 
-        "keywords": parsed_json.get("keywords", [])
+        "results": all_results, 
+        "keywords": all_keywords
     }
 
 

@@ -9,6 +9,7 @@ from newsdataapi import NewsDataApiClient
 from core.config import settings
 from sqlalchemy.orm import Session
 from models.news import News
+from models.keyword import Keyword, KeywordRule
 from datetime import datetime, date, timedelta
 
 
@@ -43,7 +44,7 @@ class NewsService:
                 category=",".join(article.get("category") or []),
                 datatype=article.get("datatype"),
                 pubDate=article.get("pubDate"),
-                pubDateTZ=article.get("pubDateTZ"),
+                pubDateTz=article.get("pubDateTZ"),
                 fetched_at=article.get("fetched_at"),
                 image_url=article.get("image_url"),
                 video_url=article.get("video_url"),
@@ -113,7 +114,7 @@ class NewsService:
 
         return (
             db.query(News)
-            .filter(News.created_at >= cutoff, News.type == "daily")
+            .filter(News.created_at >= cutoff)
             .all()
         )
 
@@ -122,7 +123,7 @@ class NewsService:
 
         news_items = (
             db.query(News)
-            .filter(News.created_at >= cutoff, News.type == "daily")
+            .filter(News.created_at >= cutoff)
             .all()
         )
         
@@ -147,27 +148,32 @@ class NewsService:
             .all()
         )
 
-# if __name__ == "__main__":
-#     from db.session import SessionLocal, engine
-#     from db.base import Base
-#     from models.news import News  # Ensure model is registered with Base
+    def fetch_and_store_daily_news_of_all_keywords(self, db: Session):
+        rules = (
+            db.query(KeywordRule)
+            .join(Keyword)
+            .filter(
+                KeywordRule.type == "daily",
+                KeywordRule.is_active == True
+            )
+            .all()
+        )
 
-#     # Create tables if they don't exist
-#     Base.metadata.create_all(bind=engine)
+        unique_keywords = set(rule.keyword.word for rule in rules)
 
-#     news_service = NewsService()
-#     results = news_service.fetch_news("supply chain")
-#     print(f"Fetched {len(results)} articles")
-#     for r in results[:10]:
-#         print(f"  - {r.get('title', 'No title')}")
-#         print(f"  - {r.get('description', 'No Description')}")
+        for word in unique_keywords:
+            self.fetch_and_store_news(word, db)
 
-#     db = SessionLocal()
-#     try:
-#         news_service.store_news(results, db)
-#         print("Stored news successfully")
-#     except Exception as e:
-#         db.rollback()
-#         print(f"Error storing news: {e}")
-#     finally:
-#         db.close()
+
+if __name__ == "__main__":
+    from db.session import SessionLocal, engine
+    from db.base import Base
+    from models.news import News  # Ensure model is registered with Base
+
+    db = SessionLocal()
+    try:
+        service = NewsService()
+        service.fetch_and_store_daily_news_of_all_keywords(db)
+        print("Successfully fetched daily news for all keywords.")
+    finally:
+        db.close()

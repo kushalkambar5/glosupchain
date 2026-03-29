@@ -35,7 +35,7 @@ class News(Base):
 
     pubDate = Column(String(50), nullable=True)
 
-    pubDateTZ = Column(String(10), nullable=True)
+    pubDateTz = Column(String(10), nullable=True)
 
     fetched_at = Column(String(50), nullable=True)
 

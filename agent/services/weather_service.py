@@ -11,6 +11,7 @@ if __name__ == "__main__":
 
 from core.config import settings
 from models.weather import Weather
+from models.location import Location, PriorityType
 
 
 class WeatherService:
