@@ -147,29 +147,3 @@ class WeatherService:
         locations = db.query(Location).filter(Location.is_active == True).all()
         for location in locations:
             self.fetch_and_store_weather(location.name, db)
-
-# if __name__ == "__main__":
-#     from db.session import SessionLocal, engine
-#     from db.base import Base
-
-#     # Ensure tables exist
-#     Base.metadata.create_all(bind=engine)
-
-#     db = SessionLocal()
-#     try:
-#         weather_service = WeatherService()
-#         print("Fetching weather for Delhi...")
-#         weather_data = weather_service.get_weather("Delhi")
-        
-#         # Check for error in response
-#         if "error" in weather_data:
-#             print(f"Error fetching weather: {weather_data['error'].get('message', 'Unknown error')}")
-#         else:
-#             print(f"Current temp in {weather_data['location']['name']}: {weather_data['current']['temp_c']}C")
-#             weather_service.store_weather(weather_data, db)
-#             print("Weather stored successfully")
-#     except Exception as e:
-#         db.rollback()
-#         print(f"Error in weather service: {e}")
-#     finally:
-#         db.close()
