@@ -10,7 +10,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import ToolNode, tools_condition
 
-from tools.weather_tool import tools as weather_tools
+from langchain_core.tools import tool
+from services.news_service import NewsService
+from services.weather_service import WeatherService
 from tools.memory_tool import update_longterm_memory
 
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
@@ -28,8 +30,18 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.7
 )
 
+@tool
+def fetch_news(query: str):
+    """Fetch latest news strictly based on a query."""
+    return NewsService().fetch_news(query)
+
+@tool
+def get_weather(city: str):
+    """Get the current weather for a specified city."""
+    return WeatherService().get_weather(city)
+
 # Combine ALL tools
-all_tools = weather_tools + [update_longterm_memory]
+all_tools = [fetch_news, get_weather, update_longterm_memory]
 llm_with_tools = llm.bind_tools(all_tools)
 
 # 3. Nodes
@@ -71,28 +83,31 @@ async def run_chat(user_id: str, is_logged_in: bool, prompt: str, thread_id: str
         "longterm_memory": longterm_memory
     }
     
-    print(f"\n--- Starting Chat Stream for User {user_id} ---")
-    
     # Using astream_events to catch tool calls natively
-    async for event in app.astream_events(initial_state, config, version="v1"):
-        kind = event["event"]
-        
-        if kind == "on_tool_start":
-            tool_name = event['name']
-            if tool_name == "update_longterm_memory":
-                print(f"[Tool Indicator] Saving to long term memory...")
-            elif "weather" in tool_name.lower():
-                print(f"[Tool Indicator] Weather getting fetched...")
-            elif "news" in tool_name.lower():
-                print(f"[Tool Indicator] News getting fetched...")
-            else:
-                print(f"[Tool Indicator] Running tool {tool_name}...")
-                
-        elif kind == "on_chat_model_stream":
-            content = event["data"]["chunk"].content
-            if content:
-                print(content, end="", flush=True)
-    print() # newline at end
+    try:
+        async for event in app.astream_events(initial_state, config, version="v1"):
+            kind = event["event"]
+            
+            if kind == "on_tool_start":
+                tool_name = event['name']
+                if tool_name == "update_longterm_memory":
+                    yield f"data: {json.dumps({'type': 'status', 'content': 'Saving to long term memory...'})}\n\n"
+                elif "weather" in tool_name.lower():
+                    yield f"data: {json.dumps({'type': 'status', 'content': 'Weather getting fetched...'})}\n\n"
+                elif "news" in tool_name.lower():
+                    yield f"data: {json.dumps({'type': 'status', 'content': 'News getting fetched...'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'status', 'content': f'Running tool {tool_name}...'})}\n\n"
+                    
+            elif kind == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
+                if content:
+                    yield f"data: {json.dumps({'type': 'message', 'content': content})}\n\n"
+    except Exception as e:
+        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+    
+    # Indicate stream complete (optional)
+    yield "data: [DONE]\n\n"
 
 if __name__ == "__main__":
     import asyncio
