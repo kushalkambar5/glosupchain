@@ -19,3 +19,4 @@ class User(Base):
     
     longterm_memory = Column(Text, nullable=True)
     threads = Column(JSON, default=list)
+    owned_ships = Column(JSON, default=list)
