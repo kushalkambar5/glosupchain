@@ -1,5 +1,10 @@
 import os
+import sys
 import json
+
+# Ensure the agent root is on the path when run directly
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import langchain
 from langchain.tools import tool
 from services.weather_service import WeatherService
@@ -16,10 +21,28 @@ from dotenv import load_dotenv
 
 from models.weatherResult import WeatherResult
 
+import time
+
 load_dotenv()
 
 if "GOOGLE_API_KEY" not in os.environ:
     raise ValueError("GOOGLE_API_KEY environment variable not set.")
+
+def llm_invoke_with_backoff(chain, inputs, max_retries=5):
+    """Invoke a LangChain chain with exponential backoff on 429/503 errors."""
+    delay = 10  # Start at 10s
+    for attempt in range(max_retries):
+        try:
+            return chain.invoke(inputs)
+        except Exception as e:
+            err = str(e).lower()
+            if "429" in err or "too many requests" in err or "503" in err or "service unavailable" in err:
+                print(f"[Rate Limit] {type(e).__name__}. Waiting {delay}s before retry {attempt+1}/{max_retries}...")
+                time.sleep(delay)
+                delay *= 2  # Exponential backoff: 10, 20, 40, 80, 160s
+            else:
+                raise
+    raise RuntimeError(f"LLM call failed after {max_retries} retries due to rate limiting.")
 
 
 @tool
@@ -184,11 +207,17 @@ def evaluate_and_save_weather_impact_node(state: WeatherState):
     chain = prompt | llm | StrOutputParser()
     
     batch_size = 50
+    severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+    total_batches = (len(weather_data) + batch_size - 1) // batch_size
+
     for i in range(0, len(weather_data), batch_size):
+        batch_num = i // batch_size + 1
         batch = weather_data[i:i+batch_size]
-        result = chain.invoke({"weather": json.dumps(batch)})
-        
+        print(f"[Evaluate] Processing batch {batch_num}/{total_batches} ({len(batch)} locations)...")
+
+        batch_results = {}
         try:
+            result = llm_invoke_with_backoff(chain, {"weather": json.dumps(batch)})
             cleaned_result = result.strip()
             if cleaned_result.startswith("```json"):
                 cleaned_result = cleaned_result[7:]
@@ -197,46 +226,49 @@ def evaluate_and_save_weather_impact_node(state: WeatherState):
             if cleaned_result.endswith("```"):
                 cleaned_result = cleaned_result[:-3]
             parsed_json = json.loads(cleaned_result.strip())
-            
             if "results" in parsed_json and isinstance(parsed_json["results"], dict):
-                all_results.update(parsed_json["results"])
-                
+                batch_results = parsed_json["results"]
+                all_results.update(batch_results)
         except Exception as e:
-            print(f"Failed to parse LLM weather results into JSON for batch {i}: {e}\nResponse was: {result}")
+            print(f"[Evaluate] Failed to process batch {batch_num}: {e}")
 
-    # Immediately save them into the WeatherResults database as requested!
-    db = SessionLocal()
-    try:
-        for weather_id_str, res in all_results.items():
-            if not isinstance(res, dict): continue
-            
+        # --- Save this batch to DB immediately before the next LLM call ---
+        if batch_results:
+            print(f"[Evaluate] Saving batch {batch_num} results to DB...")
+            db = SessionLocal()
             try:
-                w_id = int(weather_id_str)
-            except ValueError:
-                continue
-                
-            severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
-            sev_str = str(res.get("severity", "low")).lower().strip()
-            sev_val = severity_map.get(sev_str, 1)
+                for weather_id_str, res in batch_results.items():
+                    if not isinstance(res, dict):
+                        continue
+                    try:
+                        w_id = int(weather_id_str)
+                    except (ValueError, TypeError):
+                        continue
+                    sev_str = str(res.get("severity", "low")).lower().strip()
+                    sev_val = severity_map.get(sev_str, 1)
+                    existing_res = db.query(WeatherResult).filter(WeatherResult.weather_id == w_id).first()
+                    if not existing_res:
+                        db.add(WeatherResult(
+                            weather_id=w_id,
+                            ai_summary=str(res.get("ai_summary", "")),
+                            consequence=str(res.get("consequence", "")),
+                            radius_km=float(res.get("radius", 0.0) or res.get("radius_km", 0.0) or 0.0),
+                            severity=sev_val,
+                            confidence=float(res.get("confidence", 0.0) or 0.0)
+                        ))
+                db.commit()
+                print(f"[Evaluate] Batch {batch_num} saved successfully.")
+            except Exception as e:
+                db.rollback()
+                print(f"[Evaluate] DB save failed for batch {batch_num}: {e}")
+            finally:
+                db.close()
 
-            existing_res = db.query(WeatherResult).filter(WeatherResult.weather_id == w_id).first()
-            if not existing_res:
-                weather_result = WeatherResult(
-                    weather_id=w_id,
-                    ai_summary=str(res.get("ai_summary", "")),
-                    consequence=str(res.get("consequence", "")),
-                    radius_km=float(res.get("radius", 0.0) or (res.get("radius_km", 0.0) or 0.0)),
-                    severity=sev_val,
-                    confidence=float(res.get("confidence", 0.0) or 0.0)
-                )
-                db.add(weather_result)
-        db.commit()
-    except Exception as e:
-        print(f"Error saving weather results to database: {e}")
-        db.rollback()
-    finally:
-        db.close()
-            
+        # Brief pause between batches to avoid rate limits
+        if i + batch_size < len(weather_data):
+            print("[Rate Limit] Pausing 5s before next batch...")
+            time.sleep(5)
+
     return {"results": all_results}
 
 
@@ -251,4 +283,12 @@ workflow.add_edge("fetch_weather", "evaluate_and_save")
 workflow.add_edge("evaluate_and_save", END)
 
 app = workflow.compile()
+
+if __name__ == "__main__":
+    print("Starting Weather Analysis Pipeline...")
+    initial_state = {
+        "results": {}
+    }
+    app.invoke(initial_state)
+    print("Finished Weather Pipeline.")
 

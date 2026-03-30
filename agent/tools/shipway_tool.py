@@ -1,4 +1,10 @@
 import json
+import sys
+import os
+
+# Ensure the agent root is on the path when run directly
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import langchain
 from langchain.tools import tool
 from services.news_service import NewsService
@@ -18,10 +24,28 @@ from models.keyword import Keyword
 from models.shipwaysResult import ShipwayResult
 from models.news import News
 
+import time
+
 load_dotenv()
 
 if "GOOGLE_API_KEY" not in os.environ:
     raise ValueError("GOOGLE_API_KEY environment variable not set.")
+
+def llm_invoke_with_backoff(chain, inputs, max_retries=5):
+    """Invoke a LangChain chain with exponential backoff on 429/503 errors."""
+    delay = 10  # Start at 10s
+    for attempt in range(max_retries):
+        try:
+            return chain.invoke(inputs)
+        except Exception as e:
+            err = str(e).lower()
+            if "429" in err or "too many requests" in err or "503" in err or "service unavailable" in err:
+                print(f"[Rate Limit] {type(e).__name__}. Waiting {delay}s before retry {attempt+1}/{max_retries}...")
+                time.sleep(delay)
+                delay *= 2  # Exponential backoff: 10, 20, 40, 80, 160s
+            else:
+                raise  # Re-raise non-rate-limit errors immediately
+    raise RuntimeError(f"LLM call failed after {max_retries} retries due to rate limiting.")
 
 @tool
 def get_daily_news():
@@ -165,11 +189,14 @@ def analyze_supply_chain_news_node(state: SupplyChainState):
     chain = prompt | llm | StrOutputParser()
 
     batch_size = 50
+    total_batches = (len(news_data) + batch_size - 1) // batch_size
     for i in range(0, len(news_data), batch_size):
+        batch_num = i // batch_size + 1
         batch = news_data[i:i+batch_size]
-        result = chain.invoke({"news": json.dumps(batch)})
+        print(f"[Analyze] Processing batch {batch_num}/{total_batches} ({len(batch)} articles)...")
         
         try:
+            result = llm_invoke_with_backoff(chain, {"news": json.dumps(batch)})
             cleaned_result = result.strip()
             if cleaned_result.startswith("```json"):
                 cleaned_result = cleaned_result[7:]
@@ -178,11 +205,15 @@ def analyze_supply_chain_news_node(state: SupplyChainState):
             if cleaned_result.endswith("```"):
                 cleaned_result = cleaned_result[:-3]
             parsed_ids = json.loads(cleaned_result.strip())
-            
             if isinstance(parsed_ids, list):
                 all_parsed_ids.extend(parsed_ids)
         except Exception as e:
-            print(f"Failed to parse LLM response into JSON for batch {i}: {e}\nResponse was: {result}")
+            print(f"Failed to process batch {batch_num}: {e}")
+        
+        # Brief pause between batches to avoid immediate rate limit on next call
+        if i + batch_size < len(news_data):
+            print("[Rate Limit] Pausing 5s before next batch...")
+            time.sleep(5)
 
     # Remove duplicates just in case
     all_parsed_ids = list(set(all_parsed_ids))
@@ -236,18 +267,24 @@ def evaluate_news_impact_node(state: SupplyChainState):
     all_keywords = []
 
     batch_size = 50
+    severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+    total_batches = (len(target_ids) + batch_size - 1) // batch_size
+
     for i in range(0, len(target_ids), batch_size):
+        batch_num = i // batch_size + 1
         batch_ids = target_ids[i:i+batch_size]
+        print(f"[Evaluate] Processing batch {batch_num}/{total_batches} ({len(batch_ids)} articles)...")
         
         # Pull only the exact matched news objects for this sub-batch
         if isinstance(target_news, list):
             batch_news = [n for n in target_news if n.get("article_id") in batch_ids]
         else:
             batch_news = target_news
-            
-        result = chain.invoke({"news": json.dumps(batch_news), "ids": json.dumps(batch_ids)})
         
+        batch_results = {}
+        batch_keywords = []
         try:
+            result = llm_invoke_with_backoff(chain, {"news": json.dumps(batch_news), "ids": json.dumps(batch_ids)})
             cleaned_result = result.strip()
             if cleaned_result.startswith("```json"):
                 cleaned_result = cleaned_result[7:]
@@ -258,12 +295,51 @@ def evaluate_news_impact_node(state: SupplyChainState):
             parsed_json = json.loads(cleaned_result.strip())
             
             if "results" in parsed_json and isinstance(parsed_json["results"], dict):
-                all_results.update(parsed_json["results"])
-                
+                batch_results = parsed_json["results"]
+                all_results.update(batch_results)
             if "keywords" in parsed_json and isinstance(parsed_json["keywords"], list):
-                all_keywords.extend(parsed_json["keywords"])
+                batch_keywords = parsed_json["keywords"]
+                all_keywords.extend(batch_keywords)
         except Exception as e:
-            print(f"Failed to parse LLM detailed results into JSON for batch {i}: {e}\nResponse was: {result}")
+            print(f"Failed to parse LLM detailed results for batch {batch_num}: {e}")
+
+        # --- Save this batch to DB immediately before the next LLM call ---
+        if batch_results:
+            print(f"[Evaluate] Saving batch {batch_num} results to DB...")
+            db = SessionLocal()
+            try:
+                for article_id, res in batch_results.items():
+                    if not isinstance(res, dict):
+                        continue
+                    news_item = db.query(News).filter(News.article_id == article_id).first()
+                    if not news_item:
+                        continue
+                    sev_str = str(res.get("severity", "low")).lower().strip()
+                    sev_val = severity_map.get(sev_str, 1)
+                    existing_res = db.query(ShipwayResult).filter(ShipwayResult.news_id == news_item.id).first()
+                    if not existing_res:
+                        db.add(ShipwayResult(
+                            news_id=news_item.id,
+                            ai_summary=str(res.get("ai_summary", "")),
+                            consequence=str(res.get("consequence", "")),
+                            center_lat=float(res.get("center_lat", 0.0) or 0.0),
+                            center_long=float(res.get("center_long", 0.0) or 0.0),
+                            radius_km=float(res.get("radius_km", 0.0) or 0.0),
+                            severity=sev_val,
+                            confidence=float(res.get("confidence", 0.0) or 0.0)
+                        ))
+                db.commit()
+                print(f"[Evaluate] Batch {batch_num} saved successfully.")
+            except Exception as e:
+                db.rollback()
+                print(f"[Evaluate] DB save failed for batch {batch_num}: {e}")
+            finally:
+                db.close()
+
+        # Brief pause between batches to help with rate limits
+        if i + batch_size < len(target_ids):
+            print("[Rate Limit] Pausing 5s before next batch...")
+            time.sleep(5)
             
     # Guarantee unique keywords
     all_keywords = list(set(all_keywords))
@@ -345,4 +421,15 @@ workflow.add_edge("save_results", END)
 
 # Compile into an executable app
 app = workflow.compile()
+
+if __name__ == "__main__":
+    print("Starting Shipway News Analysis Pipeline...")
+    initial_state = {
+        "news": None,
+        "supply_chain_news_ids": [],
+        "results": {},
+        "keywords": []
+    }
+    app.invoke(initial_state)
+    print("Finished Shipway Pipeline.")
 
