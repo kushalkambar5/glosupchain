@@ -264,10 +264,10 @@ def evaluate_and_save_weather_impact_node(state: WeatherState):
             finally:
                 db.close()
 
-        # Brief pause between batches to avoid rate limits
+        # Brief pause between batches to stay under Gemini free tier 15 RPM limit
         if i + batch_size < len(weather_data):
-            print("[Rate Limit] Pausing 5s before next batch...")
-            time.sleep(5)
+            print("[Rate Limit] Pausing 15s before next batch...")
+            time.sleep(15)
 
     return {"results": all_results}
 

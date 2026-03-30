@@ -135,14 +135,12 @@ llm_with_tools = llm.bind_tools(tools)
 from typing import TypedDict, Dict, Any, List
 
 class SupplyChainState(TypedDict):
-    news: Any
-    supply_chain_news_ids: List[str]
     results: Dict[str, dict]
     keywords: List[str]
 
 def fetch_daily_news_node(state: SupplyChainState):
     """
-    Node that fetches daily news from the external API for all active keywords
+    Node 1: Fetches daily news from the external API for all active keywords
     and stores them in the database before analysis begins.
     """
     db = SessionLocal()
@@ -154,158 +152,90 @@ def fetch_daily_news_node(state: SupplyChainState):
         print(f"Error fetching daily news from API: {e}")
     finally:
         db.close()
-    
     return state
 
 
-def analyze_supply_chain_news_node(state: SupplyChainState):
+def analyze_and_save_node(state: SupplyChainState):
     """
-    Node that fetches daily news using the get_daily_news tool,
-    sends it to the LLM to identify news that can affect the supply chain,
-    and returns a list of their IDs along with the raw news.
+    Node 2: Fetches all news, sends them to the LLM in batches of 50.
+    Each batch call does BOTH filtering AND full analysis in one shot.
+    Results are saved to DB immediately after each batch.
     """
     try:
         news_data = get_daily_news_for_processing.invoke({})
     except Exception as e:
-        news_data = str(e)
-        return {"supply_chain_news_ids": [], "news": news_data}
-
-    if not isinstance(news_data, list):
-        news_data = [news_data] # fallback
-        
-    all_parsed_ids = []
-    
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", 
-         "You are an expert supply chain analyst. "
-         "Analyze the provided daily news data. Identify which news articles might affect the supply chain. "
-         "Extract their unique ID (such as 'id', 'article_id', or whatever identifier is present). "
-         "Return ONLY a strictly valid JSON list of strings representing the IDs of the relevant news articles. "
-         "Do not include any other text, explanations, or markdown formatting like ```json. "
-         "If no articles are relevant, return []."),
-        ("human", "News data:\n{news}")
-    ])
-    
-    chain = prompt | llm | StrOutputParser()
-
-    batch_size = 50
-    total_batches = (len(news_data) + batch_size - 1) // batch_size
-    for i in range(0, len(news_data), batch_size):
-        batch_num = i // batch_size + 1
-        batch = news_data[i:i+batch_size]
-        print(f"[Analyze] Processing batch {batch_num}/{total_batches} ({len(batch)} articles)...")
-        
-        try:
-            result = llm_invoke_with_backoff(chain, {"news": json.dumps(batch)})
-            cleaned_result = result.strip()
-            if cleaned_result.startswith("```json"):
-                cleaned_result = cleaned_result[7:]
-            if cleaned_result.startswith("```"):
-                cleaned_result = cleaned_result[3:]
-            if cleaned_result.endswith("```"):
-                cleaned_result = cleaned_result[:-3]
-            parsed_ids = json.loads(cleaned_result.strip())
-            if isinstance(parsed_ids, list):
-                all_parsed_ids.extend(parsed_ids)
-        except Exception as e:
-            print(f"Failed to process batch {batch_num}: {e}")
-        
-        # Brief pause between batches to avoid immediate rate limit on next call
-        if i + batch_size < len(news_data):
-            print("[Rate Limit] Pausing 5s before next batch...")
-            time.sleep(5)
-
-    # Remove duplicates just in case
-    all_parsed_ids = list(set(all_parsed_ids))
-        
-    return {"supply_chain_news_ids": all_parsed_ids, "news": news_data}
-
-
-def evaluate_news_impact_node(state: SupplyChainState):
-    """
-    Node that takes the relevant news IDs and raw news,
-    requests structured information from Gemini,
-    and saves the results to the state.
-    """
-    news_data = state.get("news", [])
-    target_ids = state.get("supply_chain_news_ids", [])
-    
-    if not target_ids:
+        print(f"Error fetching news for processing: {e}")
         return {"results": {}, "keywords": []}
 
-    # Filter news data to only involve target_ids to save massive LLM tokens
-    if isinstance(news_data, list):
-        target_news = [n for n in news_data if isinstance(n, dict) and n.get("article_id") in target_ids]
-    else:
-        target_news = news_data
-        
+    if not isinstance(news_data, list):
+        news_data = [news_data] if news_data else []
+
+    if not news_data:
+        print("No news data to process.")
+        return {"results": {}, "keywords": []}
+
     prompt = ChatPromptTemplate.from_messages([
-        ("system", 
-         "You are a logistics and supply chain risk expert. "
-         "I will provide you with daily news, and a specific list of relevant news IDs. "
-         "First, for *each* of those relevant news IDs, extract or estimate the following parameters: "
-         "1. ai_summary (string) "
-         "2. consequence (string) "
-         "3. center_lat (float) - latitude of center of the area on Earth which may be affected by the news "
-         "4. center_long (float) - longitude of center of the area on Earth which may be affected by the news "
-         "5. radius_km (float) - radius in km of the area on Earth which may be affected by the news "
-         "6. severity (string - low, medium, high, critical) "
-         "7. confidence (float - between 0 and 1) "
-         "\n\n"
-         "Second, generate a list of exactly 5 related keywords overall based on the severity and topics of these relevant news articles. "
-         "\n\n"
-         "Return ONLY a strictly valid JSON object with exactly two keys: 'results' and 'keywords'. "
-         "The 'results' key should be an object where keys are the news IDs and values are objects containing the parameters above. "
-         "The 'keywords' key should be a list of 5 string keywords. "
-         "Do not include markdown formatting like ```json or any other text, just the raw JSON object."),
-        ("human", "Target News IDs: {ids}\n\nNews Data: {news}")
+        ("system",
+         "You are a logistics and supply chain risk expert.\n\n"
+         "Given a batch of news articles, do the following in ONE response:\n"
+         "1. Identify ONLY the articles that could negatively affect the supply chain "
+         "(e.g. port strikes, severe weather events, geopolitical instability, trade disruptions).\n"
+         "2. For each relevant article, extract or estimate:\n"
+         "   - ai_summary (string): brief summary of the supply chain risk\n"
+         "   - consequence (string): what could happen to supply chains\n"
+         "   - center_lat (float): latitude of the most affected area\n"
+         "   - center_long (float): longitude of the most affected area\n"
+         "   - radius_km (float): estimated radius of impact in km\n"
+         "   - severity (string): one of low, medium, high, critical\n"
+         "   - confidence (float): your confidence between 0 and 1\n"
+         "3. Generate up to 5 related supply chain keywords from the relevant articles.\n\n"
+         "Return ONLY a strictly valid JSON object with exactly two keys:\n"
+         "  'results': object where keys are article_id strings and values are the parameters above "
+         "(include ONLY supply-chain-relevant articles, skip irrelevant ones entirely)\n"
+         "  'keywords': list of up to 5 keyword strings\n\n"
+         "No markdown, no extra text. Just the raw JSON object."),
+        ("human", "News articles:\n{news}")
     ])
-    
+
     chain = prompt | llm | StrOutputParser()
-    
+    severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+
     all_results = {}
     all_keywords = []
-
     batch_size = 50
-    severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
-    total_batches = (len(target_ids) + batch_size - 1) // batch_size
+    total_batches = (len(news_data) + batch_size - 1) // batch_size
 
-    for i in range(0, len(target_ids), batch_size):
+    for i in range(0, len(news_data), batch_size):
         batch_num = i // batch_size + 1
-        batch_ids = target_ids[i:i+batch_size]
-        print(f"[Evaluate] Processing batch {batch_num}/{total_batches} ({len(batch_ids)} articles)...")
-        
-        # Pull only the exact matched news objects for this sub-batch
-        if isinstance(target_news, list):
-            batch_news = [n for n in target_news if n.get("article_id") in batch_ids]
-        else:
-            batch_news = target_news
-        
+        batch = news_data[i:i + batch_size]
+        print(f"[Batch {batch_num}/{total_batches}] Analyzing {len(batch)} articles...")
+
         batch_results = {}
         batch_keywords = []
         try:
-            result = llm_invoke_with_backoff(chain, {"news": json.dumps(batch_news), "ids": json.dumps(batch_ids)})
-            cleaned_result = result.strip()
-            if cleaned_result.startswith("```json"):
-                cleaned_result = cleaned_result[7:]
-            if cleaned_result.startswith("```"):
-                cleaned_result = cleaned_result[3:]
-            if cleaned_result.endswith("```"):
-                cleaned_result = cleaned_result[:-3]
-            parsed_json = json.loads(cleaned_result.strip())
-            
-            if "results" in parsed_json and isinstance(parsed_json["results"], dict):
-                batch_results = parsed_json["results"]
-                all_results.update(batch_results)
-            if "keywords" in parsed_json and isinstance(parsed_json["keywords"], list):
-                batch_keywords = parsed_json["keywords"]
-                all_keywords.extend(batch_keywords)
-        except Exception as e:
-            print(f"Failed to parse LLM detailed results for batch {batch_num}: {e}")
+            result = llm_invoke_with_backoff(chain, {"news": json.dumps(batch)})
+            cleaned = result.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            if cleaned.startswith("```"):
+                cleaned = cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            parsed = json.loads(cleaned.strip())
 
-        # --- Save this batch to DB immediately before the next LLM call ---
+            if "results" in parsed and isinstance(parsed["results"], dict):
+                batch_results = parsed["results"]
+                all_results.update(batch_results)
+            if "keywords" in parsed and isinstance(parsed["keywords"], list):
+                batch_keywords = parsed["keywords"]
+                all_keywords.extend(batch_keywords)
+
+        except Exception as e:
+            print(f"[Batch {batch_num}] Failed: {e}")
+
+        # Save this batch to DB immediately
         if batch_results:
-            print(f"[Evaluate] Saving batch {batch_num} results to DB...")
+            print(f"[Batch {batch_num}] Saving {len(batch_results)} results to DB...")
             db = SessionLocal()
             try:
                 for article_id, res in batch_results.items():
@@ -316,8 +246,8 @@ def evaluate_news_impact_node(state: SupplyChainState):
                         continue
                     sev_str = str(res.get("severity", "low")).lower().strip()
                     sev_val = severity_map.get(sev_str, 1)
-                    existing_res = db.query(ShipwayResult).filter(ShipwayResult.news_id == news_item.id).first()
-                    if not existing_res:
+                    existing = db.query(ShipwayResult).filter(ShipwayResult.news_id == news_item.id).first()
+                    if not existing:
                         db.add(ShipwayResult(
                             news_id=news_item.id,
                             ai_summary=str(res.get("ai_summary", "")),
@@ -328,96 +258,41 @@ def evaluate_news_impact_node(state: SupplyChainState):
                             severity=sev_val,
                             confidence=float(res.get("confidence", 0.0) or 0.0)
                         ))
+                # Also save keywords from this batch
+                for word in batch_keywords:
+                    if not word:
+                        continue
+                    word_str = str(word).strip()
+                    existing_kw = db.query(Keyword).filter(Keyword.word == word_str).first()
+                    if not existing_kw:
+                        db.add(Keyword(word=word_str))
                 db.commit()
-                print(f"[Evaluate] Batch {batch_num} saved successfully.")
+                print(f"[Batch {batch_num}] Saved successfully.")
             except Exception as e:
                 db.rollback()
-                print(f"[Evaluate] DB save failed for batch {batch_num}: {e}")
+                print(f"[Batch {batch_num}] DB save failed: {e}")
             finally:
                 db.close()
 
-        # Brief pause between batches to help with rate limits
-        if i + batch_size < len(target_ids):
-            print("[Rate Limit] Pausing 5s before next batch...")
-            time.sleep(5)
-            
-    # Guarantee unique keywords
+        # Pause between batches to stay under Gemini free tier 15 RPM limit
+        if i + batch_size < len(news_data):
+            print("[Rate Limit] Pausing 15s before next batch...")
+            time.sleep(15)
+
     all_keywords = list(set(all_keywords))
-        
-    return {
-        "results": all_results, 
-        "keywords": all_keywords
-    }
-
-
-def save_analysis_results_node(state: SupplyChainState):
-    """
-    Node that saves the analyzed results and extracted keywords 
-    into their respective database models.
-    """
-    db = SessionLocal()
-    try:
-        # Save overarching keywords
-        for word in state.get("keywords", []):
-            if not word: continue
-            word_str = str(word).strip()
-            # Check if keyword already exists
-            existing_kw = db.query(Keyword).filter(Keyword.word == word_str).first()
-            if not existing_kw:
-                new_kw = Keyword(word=word_str)
-                db.add(new_kw)
-        
-        # Save detailed results into ShipwayResult
-        results = state.get("results", {})
-        for article_id, res in results.items():
-            if not isinstance(res, dict): continue
-            
-            # Find the internal primary key news_id using the article_id string
-            news_item = db.query(News).filter(News.article_id == article_id).first()
-            if not news_item:
-                continue  # Skip if we cannot tie it to a news record
-                
-            severity_map = {"low": 1, "medium": 2, "high": 3, "critical": 4}
-            sev_str = str(res.get("severity", "low")).lower().strip()
-            sev_val = severity_map.get(sev_str, 1)
-
-            existing_res = db.query(ShipwayResult).filter(ShipwayResult.news_id == news_item.id).first()
-            if not existing_res:
-                shipway_result = ShipwayResult(
-                    news_id=news_item.id,
-                    ai_summary=str(res.get("ai_summary", "")),
-                    consequence=str(res.get("consequence", "")),
-                    center_lat=float(res.get("center_lat", 0.0) or 0.0),
-                    center_long=float(res.get("center_long", 0.0) or 0.0),
-                    radius_km=float(res.get("radius_km", 0.0) or 0.0),
-                    severity=sev_val,
-                    confidence=float(res.get("confidence", 0.0) or 0.0)
-                )
-                db.add(shipway_result)
-        
-        db.commit()
-    except Exception as e:
-        db.rollback()
-        print(f"Error saving to database: {e}")
-    finally:
-        db.close()
-        
-    return state
+    print(f"Pipeline complete. {len(all_results)} articles saved, {len(all_keywords)} keywords collected.")
+    return {"results": all_results, "keywords": all_keywords}
 
 
 # --- Build StateGraph ---
 workflow = StateGraph(SupplyChainState)
 
 workflow.add_node("fetch_daily_news", fetch_daily_news_node)
-workflow.add_node("analyze_news", analyze_supply_chain_news_node)
-workflow.add_node("evaluate_news", evaluate_news_impact_node)
-workflow.add_node("save_results", save_analysis_results_node)
+workflow.add_node("analyze_and_save", analyze_and_save_node)
 
 workflow.add_edge(START, "fetch_daily_news")
-workflow.add_edge("fetch_daily_news", "analyze_news")
-workflow.add_edge("analyze_news", "evaluate_news")
-workflow.add_edge("evaluate_news", "save_results")
-workflow.add_edge("save_results", END)
+workflow.add_edge("fetch_daily_news", "analyze_and_save")
+workflow.add_edge("analyze_and_save", END)
 
 # Compile into an executable app
 app = workflow.compile()
@@ -425,11 +300,8 @@ app = workflow.compile()
 if __name__ == "__main__":
     print("Starting Shipway News Analysis Pipeline...")
     initial_state = {
-        "news": None,
-        "supply_chain_news_ids": [],
         "results": {},
         "keywords": []
     }
     app.invoke(initial_state)
     print("Finished Shipway Pipeline.")
-

@@ -110,7 +110,7 @@ class NewsService:
             self.fetch_and_store_news(rule.keyword.word, db)
         
     def get_daily_news(self, db: Session):
-        cutoff = datetime.utcnow() - timedelta(days=1)
+        cutoff = datetime.utcnow() - timedelta(hours=2)
 
         return (
             db.query(News)
@@ -119,7 +119,7 @@ class NewsService:
         )
 
     def get_daily_news_for_processing(self, db: Session):
-        cutoff = datetime.utcnow() - timedelta(days=1)
+        cutoff = datetime.utcnow() - timedelta(hours=2)
 
         news_items = (
             db.query(News)

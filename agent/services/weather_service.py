@@ -1,7 +1,7 @@
 import os
 import sys
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -147,3 +147,23 @@ class WeatherService:
         locations = db.query(Location).filter(Location.is_active == True).all()
         for location in locations:
             self.fetch_and_store_weather(location.name, db)
+
+    def get_daily_weather(self, db: Session):
+        cutoff = datetime.utcnow() - timedelta(hours=2)
+        return db.query(Weather).filter(Weather.created_at >= cutoff).all()
+
+    def get_daily_weather_for_processing(self, db: Session):
+        cutoff = datetime.utcnow() - timedelta(hours=2)
+        weather_items = db.query(Weather).filter(Weather.created_at >= cutoff).all()
+        return [
+            {
+                "id": item.id,
+                "location_name": item.location_name,
+                "condition": item.condition,
+                "temperature_c": item.temperature_c,
+                "wind_kph": item.wind_kph,
+                "precipitation_mm": item.precipitation_mm,
+                "humidity": item.humidity
+            }
+            for item in weather_items
+        ]
