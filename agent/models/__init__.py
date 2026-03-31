@@ -4,11 +4,12 @@ from .keyword import Keyword
 from .location import Location
 from .news import News
 from .weather import Weather
-from .user import User
+from .user import Users
 from .message import Message
 from .shipReroutes import ShipReroute
 from .shipwaysResult import ShipwayResult
 from .weatherResult import WeatherResult
+from .extraModels import RoadReroute, Roads, Ships, Drivers, Routes, Assignments
 
 __all__ = [
     "Base",
@@ -16,9 +17,15 @@ __all__ = [
     "Location",
     "News",
     "Weather",
-    "User",
+    "Users",
     "Message",
     "ShipReroute",
     "ShipwayResult",
-    "WeatherResult"
+    "WeatherResult",
+    "RoadReroute",
+    "Roads",
+    "Ships",
+    "Drivers",
+    "Routes",
+    "Assignments"
 ]

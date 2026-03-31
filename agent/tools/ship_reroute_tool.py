@@ -12,7 +12,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, START, END
 
 from db.session import get_db
-from models.user import User
+from models.user import Users
 from models.shipwaysResult import ShipwayResult
 from models.weatherResult import WeatherResult
 from models.weather import Weather
@@ -60,7 +60,7 @@ def fetch_user_ships(state: State):
     """
     print("[Node] Fetching owned ships from database...")
     db = next(get_db())
-    users = db.query(User).filter(User.owned_ships != []).all()
+    users = db.query(Users).filter(Users.owned_ships != []).all()
     
     ship_data = state.get("ship_data", {})
     

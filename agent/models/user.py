@@ -1,10 +1,15 @@
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, Text, JSON
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship, Mapped
+from typing import List, Optional, TYPE_CHECKING
 from db.base import Base
 from datetime import datetime
 
-class User(Base):
+if TYPE_CHECKING:
+    from .extraModels import Drivers, Routes, Assignments
+
+class Users(Base):
     __tablename__ = "users"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -18,5 +23,19 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     longterm_memory = Column(Text, nullable=True)
-    threads = Column(JSON, default=list)
+    threads = Column(JSON, default=list) # Drizzle: json().default([])
     owned_ships = Column(JSON, default=list)
+
+    # Relationships (Standardizing with pluralized class name 'Users')
+    drivers: Mapped[List["Drivers"]] = relationship("Drivers", back_populates="user")
+    routes: Mapped[List["Routes"]] = relationship("Routes", back_populates="manager")
+    assignments_driver: Mapped[List["Assignments"]] = relationship(
+        "Assignments", 
+        foreign_keys="[Assignments.driver_id]", 
+        back_populates="driver"
+    )
+    assignments_manager: Mapped[List["Assignments"]] = relationship(
+        "Assignments", 
+        foreign_keys="[Assignments.manager_id]", 
+        back_populates="manager"
+    )
