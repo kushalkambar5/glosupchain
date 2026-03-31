@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, Float, Text, ForeignKey, DateTime, BigInteger
 from db.base import Base
 from datetime import datetime
 
@@ -9,8 +9,8 @@ class ShipwayResult(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
 
     # Optional links (keep nullable but NOT ideal for long term)
-    news_id = Column(Integer, ForeignKey("news.id"), nullable=True)
-    weather_id = Column(Integer, ForeignKey("weather.id"), nullable=True)
+    news_id = Column(BigInteger, ForeignKey("news.id"), nullable=True)
+    weather_id = Column(BigInteger, ForeignKey("weather.id"), nullable=True)
 
     # Core LLM outputs
     ai_summary = Column(Text, nullable=False)

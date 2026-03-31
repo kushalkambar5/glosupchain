@@ -209,6 +209,9 @@ def analyze_and_save_node(state: SupplyChainState):
         batch_num = i // batch_size + 1
         batch = news_data[i:i + batch_size]
         print(f"[Batch {batch_num}/{total_batches}] Analyzing {len(batch)} articles...")
+        if not batch:
+            print(f"[Batch {batch_num}] Empty batch, skipping.")
+            continue
 
         batch_results = {}
         batch_keywords = []
@@ -238,12 +241,20 @@ def analyze_and_save_node(state: SupplyChainState):
             print(f"[Batch {batch_num}] Saving {len(batch_results)} results to DB...")
             db = SessionLocal()
             try:
+                items_written = 0
+                items_skipped_no_news = 0
+                items_skipped_existing = 0
+
                 for article_id, res in batch_results.items():
                     if not isinstance(res, dict):
                         continue
-                    news_item = db.query(News).filter(News.article_id == article_id).first()
+                    
+                    clean_id = str(article_id).strip()
+                    news_item = db.query(News).filter(News.article_id == clean_id).first()
                     if not news_item:
+                        items_skipped_no_news += 1
                         continue
+                    
                     sev_str = str(res.get("severity", "low")).lower().strip()
                     sev_val = severity_map.get(sev_str, 1)
                     existing = db.query(ShipwayResult).filter(ShipwayResult.news_id == news_item.id).first()
@@ -258,6 +269,9 @@ def analyze_and_save_node(state: SupplyChainState):
                             severity=sev_val,
                             confidence=float(res.get("confidence", 0.0) or 0.0)
                         ))
+                        items_written += 1
+                    else:
+                        items_skipped_existing += 1
                 # Also save keywords from this batch
                 for word in batch_keywords:
                     if not word:
@@ -267,7 +281,7 @@ def analyze_and_save_node(state: SupplyChainState):
                     if not existing_kw:
                         db.add(Keyword(word=word_str))
                 db.commit()
-                print(f"[Batch {batch_num}] Saved successfully.")
+                print(f"[Batch {batch_num}] Save Status: {items_written} new results, {items_skipped_existing} already processed, {items_skipped_no_news} IDs not found in DB.")
             except Exception as e:
                 db.rollback()
                 print(f"[Batch {batch_num}] DB save failed: {e}")

@@ -22,13 +22,18 @@ class NewsService:
         return response.get("results", [])
 
     def store_news(self, articles: list, db: Session):
+        added_count = 0
+        skipped_count = 0
+        print(f"[NewsService] Processing {len(articles)} articles from API...")
+        
         for article in articles:
-            article_id = article.get("article_id")
+            article_id = str(article.get("article_id", "")).strip()
             if not article_id:
                 continue
 
             existing = db.query(News).filter_by(article_id=article_id).first()
             if existing:
+                skipped_count += 1
                 continue
 
             news = News(
@@ -64,8 +69,10 @@ class NewsService:
             )
 
             db.add(news)
+            added_count += 1
 
         db.commit()
+        print(f"[NewsService] Done. Added {added_count}, Skipped {skipped_count} (already existed).")
 
     def _parse_date(self, date_str):
         if not date_str:
