@@ -1,5 +1,9 @@
 import os
+import sys
 import json
+
+# Ensure the agent root is on the path when run directly
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from typing import TypedDict, Annotated, Literal
 from dotenv import load_dotenv
 
