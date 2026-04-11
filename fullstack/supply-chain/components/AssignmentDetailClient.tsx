@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import AssignmentDetailMap from '@/components/AssignmentDetailMap'
+import RouteComparisonPanel from '@/components/RouteComparisonPanel'
 
 interface AssignmentDetailClientProps {
   assignment: any
@@ -13,6 +14,21 @@ interface AssignmentDetailClientProps {
     destLat: number
     destLon: number
     goodsAmount: number
+  }
+}
+
+interface ParsedRoute {
+  nodes: Array<{ lat: number; lon: number }>
+  distance_m: number
+  duration_min: number | null
+  route_rank: number
+  winner_reason: string
+  selection_reason: string
+  reason: string
+  factors: {
+    traffic: string
+    weather: string
+    news: string[]
   }
 }
 
@@ -27,6 +43,7 @@ export default function AssignmentDetailClient({
   const [pickupPlace, setPickupPlace] = useState<string | null>(null)
   const [deliveryPlace, setDeliveryPlace] = useState<string | null>(null)
   const [loadingPlaces, setLoadingPlaces] = useState(true)
+  const [visibleRoutes, setVisibleRoutes] = useState<number[]>([1, 2, 3])
 
   // Fetch place names using reverse geocoding
   useEffect(() => {
@@ -77,7 +94,6 @@ export default function AssignmentDetailClient({
         throw new Error(data.error || 'Failed to complete assignment')
       }
 
-      // Redirect back to manager dashboard after successful completion
       router.push('/manager/road')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -85,46 +101,49 @@ export default function AssignmentDetailClient({
     }
   }
 
-  const reasons = assignment.bestRoute?.reasons || {}
-  const routePoints = assignment.bestRoute?.route || []
-
-  // Parse the actual route structure - find the leg with nodes
-  let parsedRoutePoints: any[] = []
-  let parsedReasons: any = {}
+  // Parse multi-route structure
+  const parsedRoutes: ParsedRoute[] = []
+  let leg1Points: Array<{ lat: number; lon: number }> = []
 
   if (assignment.bestRoute && typeof assignment.bestRoute === 'object') {
-    // Check for legs structure (leg_1_driver_to_source, leg_2_source_to_dest, etc.)
-    const legs = Object.keys(assignment.bestRoute).filter(key => key.startsWith('leg_'))
-    if (legs.length > 0) {
-      // Combine all legs with nodes
-      for (const legKey of legs) {
-        const leg = assignment.bestRoute[legKey]
-        if (leg?.nodes && Array.isArray(leg.nodes) && leg.nodes.length > 0) {
-          parsedRoutePoints.push(...leg.nodes)
-          // Store reasons from the first leg that has content
-          if (!parsedReasons.reason && leg.reason) {
-            parsedReasons = {
-              reason: leg.reason,
-              factors: leg.factors || {},
-              distance_km: leg.distance_m ? (leg.distance_m / 1000).toFixed(2) : 'N/A',
-              duration_min: leg.duration_min ? leg.duration_min.toFixed(1) : 'N/A',
-              winner_reason: leg.winner_reason || '',
-            }
-          }
-        }
+    // Parse Leg 1: Driver to Source
+    if (assignment.bestRoute.leg_1_driver_to_source && Array.isArray(assignment.bestRoute.leg_1_driver_to_source)) {
+      const leg1Data = assignment.bestRoute.leg_1_driver_to_source[0]
+      if (leg1Data?.nodes) {
+        leg1Points = leg1Data.nodes
       }
-    } else if (assignment.bestRoute.nodes && Array.isArray(assignment.bestRoute.nodes)) {
-      // Direct nodes array
-      parsedRoutePoints = assignment.bestRoute.nodes
-      parsedReasons = {
-        reason: assignment.bestRoute.reason || '',
-        factors: assignment.bestRoute.factors || {},
-        distance_km: assignment.bestRoute.distance_m ? (assignment.bestRoute.distance_m / 1000).toFixed(2) : 'N/A',
-        duration_min: assignment.bestRoute.duration_min ? assignment.bestRoute.duration_min.toFixed(1) : 'N/A',
-        winner_reason: assignment.bestRoute.winner_reason || '',
+    }
+
+    // Parse Leg 2: Source to Destination (all 3 routes)
+    if (assignment.bestRoute.leg_2_source_to_dest && Array.isArray(assignment.bestRoute.leg_2_source_to_dest)) {
+      for (const route of assignment.bestRoute.leg_2_source_to_dest) {
+        if (route.nodes && Array.isArray(route.nodes)) {
+          parsedRoutes.push({
+            nodes: route.nodes,
+            distance_m: route.distance_m || 0,
+            duration_min: route.duration_min || null,
+            route_rank: route.route_rank || 1,
+            winner_reason: route.winner_reason || '',
+            selection_reason: route.selection_reason || '',
+            reason: route.reason || '',
+            factors: route.factors || {
+              traffic: 'unknown',
+              weather: 'unknown',
+              news: [],
+            },
+          })
+        }
       }
     }
   }
+
+  const toggleRouteVisibility = (rank: number) => {
+    setVisibleRoutes((prev) =>
+      prev.includes(rank) ? prev.filter((r) => r !== rank) : [...prev, rank]
+    )
+  }
+
+  const selectedRoute = parsedRoutes.find((r) => r.route_rank === 1) || parsedRoutes[0]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
@@ -146,10 +165,24 @@ export default function AssignmentDetailClient({
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow-md overflow-hidden">
               <div className="p-6 border-b border-gray-200">
-                <h2 className="text-2xl font-bold text-gray-900">Optimized Route</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Route Comparison Map</h2>
+                <p className="text-sm text-gray-600 mt-1">All 3 routes with different colors. Toggle visibility below.</p>
               </div>
-              <AssignmentDetailMap bestRoute={parsedRoutePoints} reasons={parsedReasons} />
+              <AssignmentDetailMap
+                allRoutes={parsedRoutes}
+                leg1={leg1Points}
+                visibleRoutes={visibleRoutes}
+              />
             </div>
+
+            {/* Route Comparison Panel */}
+            {parsedRoutes.length > 0 && (
+              <RouteComparisonPanel
+                routes={parsedRoutes}
+                visibleRoutes={visibleRoutes}
+                onToggleRoute={toggleRouteVisibility}
+              />
+            )}
           </div>
 
           {/* Right Column - Details */}
@@ -225,19 +258,45 @@ export default function AssignmentDetailClient({
                     {Math.round(routeDetails.goodsAmount)} units
                   </p>
                 </div>
-                {parsedReasons.distance_km && (
-                  <div>
-                    <p className="text-sm text-gray-600">Route Distance</p>
-                    <p className="text-gray-900 font-semibold">{parsedReasons.distance_km} km</p>
-                  </div>
-                )}
-                {parsedReasons.duration_min && (
-                  <div>
-                    <p className="text-sm text-gray-600">Estimated Duration</p>
-                    <p className="text-gray-900 font-semibold">{parsedReasons.duration_min} minutes</p>
-                  </div>
+                {selectedRoute && (
+                  <>
+                    <div>
+                      <p className="text-sm text-gray-600">Selected Route Distance</p>
+                      <p className="text-gray-900 font-semibold">{(selectedRoute.distance_m / 1000).toFixed(2)} km</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Estimated Duration</p>
+                      <p className="text-gray-900 font-semibold">
+                        {selectedRoute.duration_min ? selectedRoute.duration_min.toFixed(1) : 'N/A'} minutes
+                      </p>
+                    </div>
+                  </>
                 )}
               </div>
+
+              {/* Route Conditions Summary */}
+              {selectedRoute && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">Current Conditions:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedRoute.factors?.traffic && (
+                      <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
+                        🚗 {selectedRoute.factors.traffic}
+                      </span>
+                    )}
+                    {selectedRoute.factors?.weather && (
+                      <span className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded">
+                        🌤️ {selectedRoute.factors.weather}
+                      </span>
+                    )}
+                    {selectedRoute.factors?.news && selectedRoute.factors.news.length > 0 && (
+                      <span className="text-xs bg-amber-50 text-amber-700 px-2 py-1 rounded">
+                        📰 News alert
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Complete Button */}
@@ -260,42 +319,50 @@ export default function AssignmentDetailClient({
           </div>
         </div>
 
-        {/* Reasons Section */}
-        {parsedReasons && Object.keys(parsedReasons).length > 0 && (
+        {/* Selected Route Details */}
+        {selectedRoute && (
           <div className="mt-8 bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Route Optimization Details</h2>
-            
-            <div className="space-y-6">
-              {/* Main Reason */}
-              {parsedReasons.reason && (
-                <div className="border-l-4 border-blue-500 pl-4 py-2">
-                  <h3 className="font-semibold text-gray-900 mb-2">Route Optimization Reason</h3>
-                  <p className="text-gray-700">{parsedReasons.reason}</p>
-                </div>
-              )}
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Selected Route Details (Route #1)</h2>
 
-              {/* Factors Grid */}
-              {parsedReasons.factors && Object.keys(parsedReasons.factors).length > 0 && (
-                <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Impact Factors</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {Object.entries(parsedReasons.factors).map(([key, value]: [string, any]) => (
-                      <div key={key} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                        <p className="text-sm text-gray-600 capitalize">{key.replace(/_/g, ' ')}</p>
-                        <p className="text-lg font-semibold text-gray-900">
-                          {typeof value === 'number' ? value.toFixed(3) : value}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+            <div className="space-y-6">
+              {/* Selection Reason */}
+              {selectedRoute.selection_reason && (
+                <div className="border-l-4 border-green-500 pl-4 py-2 bg-green-50">
+                  <h3 className="font-semibold text-green-900 mb-2">Why This Route Was Selected</h3>
+                  <p className="text-green-800">{selectedRoute.selection_reason}</p>
                 </div>
               )}
 
               {/* Winner Reason */}
-              {parsedReasons.winner_reason && (
-                <div className="border-l-4 border-green-500 pl-4 py-2 bg-green-50">
-                  <h3 className="font-semibold text-gray-900 mb-2">Why This Route Was Selected</h3>
-                  <p className="text-gray-700 text-sm">{parsedReasons.winner_reason}</p>
+              {selectedRoute.winner_reason && (
+                <div className="border-l-4 border-blue-500 pl-4 py-2 bg-blue-50">
+                  <h3 className="font-semibold text-blue-900 mb-2">Winner Reason</h3>
+                  <p className="text-blue-800">{selectedRoute.winner_reason}</p>
+                </div>
+              )}
+
+              {/* Conditions Grid */}
+              {selectedRoute.factors && Object.keys(selectedRoute.factors).length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-gray-900 mb-3">Road & Weather Conditions</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                      <p className="text-sm text-blue-600 font-semibold">🚗 Traffic</p>
+                      <p className="text-gray-900 font-medium mt-1">{selectedRoute.factors.traffic}</p>
+                    </div>
+                    <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                      <p className="text-sm text-purple-600 font-semibold">🌤️ Weather</p>
+                      <p className="text-gray-900 font-medium mt-1">{selectedRoute.factors.weather}</p>
+                    </div>
+                    <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                      <p className="text-sm text-amber-600 font-semibold">📰 News Alerts</p>
+                      <p className="text-gray-900 font-medium mt-1">
+                        {selectedRoute.factors.news?.length > 0
+                          ? selectedRoute.factors.news.join(', ')
+                          : 'None'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
