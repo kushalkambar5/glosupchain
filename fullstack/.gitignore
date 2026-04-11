@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+.yarn/
+
+# Build and Output
+/.next/
+/out/
+/build/
+/dist/
+
+# Env files
+.env*
+
+# IDE and System files
+.DS_Store
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Misc
+*.pem
+*.tsbuildinfo
+next-env.d.ts
