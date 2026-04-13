@@ -8,7 +8,7 @@ from typing import TypedDict, Annotated, Literal
 from dotenv import load_dotenv
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import HumanMessage, SystemMessage, AIMessage, BaseMessage
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from langgraph.graph.message import add_messages
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
@@ -31,7 +31,8 @@ class State(TypedDict):
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-lite",
     api_key=os.getenv("GOOGLE_API_KEY"),
-    temperature=0.7
+    temperature=0.7,
+    system_prompt="You are a helpful Supply Chain AI assistant. You have access to tools for fetching weather, news, and managing user memory."
 )
 
 @tool
@@ -44,26 +45,20 @@ def get_weather(city: str):
     """Get the current weather for a specified city."""
     return WeatherService().get_weather(city)
 
-# Combine ALL tools
-all_tools = [fetch_news, get_weather, update_longterm_memory]
-llm_with_tools = llm.bind_tools(all_tools)
+# Bind tools to LLM - use the default LLM for binding
+llm_with_tools = llm.bind_tools([fetch_news, get_weather, update_longterm_memory])
 
 # 3. Nodes
 def chatbot_node(state: State):
+    """Process messages with LLM, without modifying message structure."""
     messages = state.get("messages", [])
-    memory = state.get("longterm_memory", "")
     
-    # Pre-processing: Keep last 10 messages safely
-    recent_messages = messages[-10:] if len(messages) > 10 else messages
-    
-    # Inject memory as System Message
-    sys_msg = SystemMessage(content=f"You are a helpful Supply Chain AI.\nUser's Long-term Memory:\n{memory}")
-    final_messages = [sys_msg] + recent_messages
-    
-    response = llm_with_tools.invoke(final_messages)
+    # Simply invoke without modifying - preserve exact turn structure for Gemini
+    response = llm_with_tools.invoke(messages)
     return {"messages": [response]}
 
 # 4. Graph Construction
+all_tools = [fetch_news, get_weather, update_longterm_memory]
 graph_builder = StateGraph(State)
 
 graph_builder.add_node("chatbot", chatbot_node)
@@ -71,6 +66,7 @@ graph_builder.add_node("tools", ToolNode(all_tools))
 
 graph_builder.add_edge(START, "chatbot")
 graph_builder.add_conditional_edges("chatbot", tools_condition)
+graph_builder.add_edge("tools", "chatbot")
 graph_builder.add_edge("tools", "chatbot")
 
 # For testing, we just use InMemorySaver. 
@@ -82,8 +78,13 @@ app = graph_builder.compile(checkpointer=memory_saver)
 async def run_chat(user_id: str, is_logged_in: bool, prompt: str, thread_id: str, longterm_memory: str = ""):
     config = {"configurable": {"thread_id": thread_id, "user_id": user_id}}
     
+    # Augment prompt with memory context on first message
+    augmented_prompt = prompt
+    if longterm_memory:
+        augmented_prompt = f"{prompt}\n\n[Previous context: {longterm_memory}]"
+    
     initial_state = {
-        "messages": [HumanMessage(content=prompt)],
+        "messages": [HumanMessage(content=augmented_prompt)],
         "longterm_memory": longterm_memory
     }
     

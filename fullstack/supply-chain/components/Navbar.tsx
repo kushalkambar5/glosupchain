@@ -5,6 +5,7 @@ import { useSession, signOut } from 'next-auth/react'
 import { usePathname } from 'next/navigation'
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
 import Button from './Button'
+import { MessageSquare } from 'lucide-react'
 
 export default function Navbar() {
   const { data: session } = useSession()
@@ -164,6 +165,14 @@ export default function Navbar() {
 
         {/* Right - Auth + Hamburger */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('toggle-chatbot'))}
+            className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-all border border-emerald-100 shadow-sm group"
+            title="AI Assistant"
+          >
+            <MessageSquare className="w-5 h-5 group-hover:scale-110 transition-transform" />
+          </button>
+
           {!session ? (
             <>
               <Link href="/login">
@@ -299,6 +308,13 @@ export default function Navbar() {
         }`}
       >
         <div className={`max-w-7xl mx-auto px-4 py-3 space-y-1 transition-all duration-300 ${mobileMenuOpen ? 'translate-y-0' : '-translate-y-4'}`}>
+            <button
+              onClick={() => { setMobileMenuOpen(false); window.dispatchEvent(new CustomEvent('toggle-chatbot')) }}
+              className="flex items-center w-full px-4 py-3 text-sm font-medium text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition gap-2 poppins-medium"
+            >
+              <MessageSquare className="w-4 h-4" />
+              AI Assistant
+            </button>
 
             {/* Nav links */}
             {!session ? (
