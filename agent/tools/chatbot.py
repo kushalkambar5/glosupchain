@@ -31,8 +31,7 @@ class State(TypedDict):
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash-lite",
     api_key=os.getenv("GOOGLE_API_KEY"),
-    temperature=0.7,
-    system_prompt="You are a helpful Supply Chain AI assistant. You have access to tools for fetching weather, news, and managing user memory."
+    temperature=0.7
 )
 
 @tool
