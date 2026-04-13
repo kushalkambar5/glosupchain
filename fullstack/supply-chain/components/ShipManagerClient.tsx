@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Newspaper, ExternalLink, Globe, Tag, X, Loader2, MapPin } from 'lucide-react'
+import { Newspaper, ExternalLink, Globe, Tag, X, Loader2, MapPin, Wind, ChevronDown } from 'lucide-react'
 import ShipManagerForm from '@/components/ShipManagerForm'
 import ShipRouteMapClient from '@/components/ShipRouteMapClient'
 
@@ -30,11 +30,30 @@ interface NewsItem {
   pubDate: string | null
 }
 
+interface WeatherItem {
+  id: number
+  locationName: string
+  country: string
+  latitude: number
+  longitude: number
+  condition: string
+  temperatureC: number
+  windKph: number
+  humidity: number | null
+  pressureMb: number | null
+}
+
 export default function ShipManagerClient() {
   const [selectedReroute, setSelectedReroute] = useState<ShipReroute | null>(null)
   const [newsItems, setNewsItems] = useState<NewsItem[]>([])
   const [newsLoading, setNewsLoading] = useState(false)
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null)
+  const [weatherItems, setWeatherItems] = useState<WeatherItem[]>([])
+  const [weatherLoading, setWeatherLoading] = useState(false)
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    news: true,
+    weather: true,
+  })
 
   useEffect(() => {
     const savedReroute = localStorage.getItem('selectedReroute')
@@ -81,6 +100,41 @@ export default function ShipManagerClient() {
       setNewsItems([])
     }
   }, [selectedReroute, fetchNews])
+
+  // Fetch weather details when reroute changes
+  const fetchWeather = useCallback(async (weatherIds: number[]) => {
+    if (!weatherIds || weatherIds.length === 0) {
+      setWeatherItems([])
+      return
+    }
+    setWeatherLoading(true)
+    try {
+      const res = await fetch('/api/weather', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: weatherIds }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setWeatherItems(data.weather || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch weather:', err)
+    } finally {
+      setWeatherLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (selectedReroute?.affectedByWeather) {
+      const ids = Array.isArray(selectedReroute.affectedByWeather)
+        ? selectedReroute.affectedByWeather
+        : []
+      fetchWeather(ids)
+    } else {
+      setWeatherItems([])
+    }
+  }, [selectedReroute, fetchWeather])
 
   return (
     <div className="space-y-6">
@@ -237,22 +291,50 @@ export default function ShipManagerClient() {
 
       {/* Affected by Weather */}
       {selectedReroute && selectedReroute.affectedByWeather && selectedReroute.affectedByWeather.length > 0 && (
-        <div className="bg-orange-50/50 rounded-xl border border-orange-200/60 p-4 shadow-sm">
-          <h3 className="font-bold text-orange-900 mb-3 text-sm flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse"></div>
-            Route Weather Obstacles
-          </h3>
-          <div className="space-y-2">
-            {selectedReroute.affectedByWeather.map((weather: any, idx: number) => (
-              <div
-                key={idx}
-                className="flex items-start gap-2 bg-white/60 p-2.5 rounded-lg border border-orange-100 text-xs sm:text-sm text-orange-800 font-medium"
-              >
-                <div className="w-1 h-1 rounded-full bg-orange-300 mt-1.5 shrink-0"></div>
-                <span>{weather.condition || weather.description || JSON.stringify(weather)}</span>
-              </div>
-            ))}
-          </div>
+        <div className="bg-orange-50/50 rounded-xl border border-orange-200/60 overflow-hidden shadow-sm">
+          <button
+            onClick={() => setExpandedSections(prev => ({ ...prev, weather: !prev.weather }))}
+            className="w-full px-4 py-3 bg-orange-50/50 hover:bg-orange-100/50 transition flex items-center justify-between"
+          >
+            <h3 className="font-bold text-orange-900 text-sm flex items-center gap-2">
+              <Wind className="w-4 h-4 text-orange-600" />
+              Route Weather Obstacles ({selectedReroute.affectedByWeather.length})
+            </h3>
+            <ChevronDown className={`w-4 h-4 text-orange-600 transition-transform ${expandedSections.weather ? 'rotate-180' : ''}`} />
+          </button>
+          {expandedSections.weather && (
+            <div className="divide-y divide-orange-200">
+              {weatherLoading ? (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 text-orange-500 animate-spin mb-2" />
+                  <span className="text-xs text-gray-400 font-medium">Loading weather data...</span>
+                </div>
+              ) : weatherItems.length > 0 ? (
+                weatherItems.map((weatherItem, idx) => (
+                  <div key={idx} className="p-4 hover:bg-orange-100/30 transition">
+                    <div className="font-bold text-orange-900 text-sm mb-2">{weatherItem.locationName}, {weatherItem.country}</div>
+                    <div className="text-xs text-orange-700 mb-2 font-semibold">{weatherItem.condition}</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs text-orange-800 bg-orange-50 p-2 rounded">
+                      <div><span className="font-bold">Temperature:</span> {weatherItem.temperatureC}°C</div>
+                      <div><span className="font-bold">Wind Speed:</span> {weatherItem.windKph} km/h</div>
+                      <div><span className="font-bold">Latitude:</span> {weatherItem.latitude?.toFixed(2)}</div>
+                      <div><span className="font-bold">Longitude:</span> {weatherItem.longitude?.toFixed(2)}</div>
+                      {weatherItem.humidity !== null && (
+                        <div><span className="font-bold">Humidity:</span> {weatherItem.humidity}%</div>
+                      )}
+                      {weatherItem.pressureMb !== null && (
+                        <div><span className="font-bold">Pressure:</span> {weatherItem.pressureMb} mb</div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 text-center text-orange-600 text-xs font-medium">
+                  No weather details available
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

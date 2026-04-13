@@ -1,9 +1,9 @@
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { db } from '@/db/index'
-import { shipReroutes } from '@/db/schema'
+import { shipReroutes, news, weather } from '@/db/schema'
 import ShipReroutesMapClient from '@/components/ShipReroutesMapClient'
-import { gt } from 'drizzle-orm'
+import { gt, inArray, sql } from 'drizzle-orm'
 
 export default async function ShipReroutesPage() {
   const session = await getServerSession(authOptions)
@@ -17,9 +17,54 @@ export default async function ShipReroutesPage() {
     .from(shipReroutes)
     .where(gt(shipReroutes.createdAt, twoDaysAgoISO))
 
+  // Collect all unique news and weather IDs
+  const allNewsIds = new Set<bigint>()
+  const allWeatherIds = new Set<number>()
+  
+  reroutes.forEach((reroute) => {
+    if (Array.isArray(reroute.affectedByNews)) {
+      reroute.affectedByNews.forEach((id: number | bigint) => {
+        allNewsIds.add(typeof id === 'bigint' ? id : BigInt(id))
+      })
+    }
+    if (Array.isArray(reroute.affectedByWeather)) {
+      reroute.affectedByWeather.forEach((id: number) => allWeatherIds.add(id))
+    }
+  })
+
+  // Fetch news and weather data
+  let newsData: any[] = []
+  let weatherData: any[] = []
+
+  if (allNewsIds.size > 0) {
+    newsData = await db.select()
+      .from(news)
+      .where(sql`${news.id} IN (${sql.join(Array.from(allNewsIds).map((id) => sql`${id}`), sql`, `)})`)
+  }
+
+  if (allWeatherIds.size > 0) {
+    weatherData = await db.select()
+      .from(weather)
+      .where(inArray(weather.id, Array.from(allWeatherIds)))
+  }
+
+  // Enhance reroutes with actual news and weather details
+  const mergedReroutes = reroutes.map((reroute) => ({
+    ...reroute,
+    newsDetails: Array.isArray(reroute.affectedByNews)
+      ? reroute.affectedByNews.map((id: number | bigint) => {
+          const numId = typeof id === 'bigint' ? Number(id) : id
+          return newsData.find((n) => Number(n.id) === numId)
+        })
+      : [],
+    weatherDetails: Array.isArray(reroute.affectedByWeather)
+      ? reroute.affectedByWeather.map((id: number) => weatherData.find((w) => w.id === id))
+      : [],
+  }))
+
   // Group reroutes by shipId
-  type ShipReroute = typeof reroutes[number]
-  const groupedReroutes = reroutes.reduce<Record<number, ShipReroute[]>>((acc, reroute) => {
+  type ShipReroute = typeof mergedReroutes[number]
+  const groupedReroutes = mergedReroutes.reduce<Record<number, ShipReroute[]>>((acc, reroute) => {
     if (!acc[reroute.shipId]) {
       acc[reroute.shipId] = []
     }
@@ -67,7 +112,7 @@ export default async function ShipReroutesPage() {
           {/* Map */}
           <div>
             {reroutes.length > 0 ? (
-              <ShipReroutesMapClient reroutes={reroutes as any} />
+              <ShipReroutesMapClient reroutes={mergedReroutes as any} />
             ) : (
               <div className="bg-white rounded-xl overflow-hidden border border-gray-200 shadow-md p-12 text-center">
                 <p className="text-gray-500 text-lg">No ship reroutes available</p>

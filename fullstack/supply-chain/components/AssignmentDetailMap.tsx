@@ -109,14 +109,14 @@ export default function AssignmentDetailMap({
                 opacity={0.8}
                 dashArray="8 6"
               />
-              <Marker position={[leg1[0].lat, leg1[0].lon]} icon={createCustomIcon('%233b82f6', 'Driver')}>
+              <Marker position={[leg1[0].lat, leg1[0].lon]} icon={createCustomIcon('#3b82f6', 'Driver')}>
                 <Popup>
                   <div className="text-sm font-semibold">
                     <p>🚗 Driver Location</p>
                   </div>
                 </Popup>
               </Marker>
-              <Marker position={[leg1[leg1.length - 1].lat, leg1[leg1.length - 1].lon]} icon={createCustomIcon('%2310b981', 'Source')}>
+              <Marker position={[leg1[leg1.length - 1].lat, leg1[leg1.length - 1].lon]} icon={createCustomIcon('#10b981', 'Source')}>
                 <Popup>
                   <div className="text-sm font-semibold">
                     <p>📍 Source/Pickup Location</p>
@@ -147,7 +147,7 @@ export default function AssignmentDetailMap({
                   route.data.nodes[route.data.nodes.length - 1].lat,
                   route.data.nodes[route.data.nodes.length - 1].lon,
                 ]}
-                icon={createCustomIcon(route.color.substring(1), `Route #${route.data.route_rank}`)}
+                icon={createCustomIcon(route.color, `Route #${route.data.route_rank}`)}
               >
                 <Popup>
                   <div className="text-sm font-semibold">

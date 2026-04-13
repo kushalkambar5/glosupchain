@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 import PaginationControls from './PaginationControls'
 import { useState, useRef, useEffect } from 'react'
-import { MapIcon, Ship, MapPin, AlertTriangle, Wind, Newspaper, Check, Bot } from 'lucide-react'
+import { MapIcon, Ship, MapPin, AlertTriangle, Wind, Newspaper, Check, Bot, ChevronDown } from 'lucide-react'
 
 // Fix for default marker icons in react-leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -23,6 +23,8 @@ interface ShipReroute {
   affectedByWeather: any
   suggestion: string
   createdAt: string
+  newsDetails?: any[]
+  weatherDetails?: any[]
 }
 
 interface ShipReroutesMapProps {
@@ -64,6 +66,10 @@ function interpolateRoute(points: Array<[number, number]>, steps: number = 10): 
 export default function ShipReroutesMap({ reroutes }: ShipReroutesMapProps) {
   const [selectedRoute, setSelectedRoute] = useState<ShipReroute | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    news: true,
+    weather: true,
+  })
   const mapRef = useRef<L.Map | null>(null)
   const mapWrapperRef = useRef<HTMLDivElement | null>(null)
   const detailsRef = useRef<HTMLDivElement | null>(null)
@@ -437,6 +443,87 @@ export default function ShipReroutesMap({ reroutes }: ShipReroutesMapProps) {
                         )}
                       </div>
                     </div>
+
+                    {/* Collapsible News Section */}
+                    {selectedRoute.newsDetails && selectedRoute.newsDetails.length > 0 && (
+                      <div className="bg-blue-50 rounded-xl border border-blue-200 overflow-hidden">
+                        <button
+                          onClick={() => setExpandedSections(prev => ({ ...prev, news: !prev.news }))}
+                          className="w-full px-4 py-3 bg-blue-50 hover:bg-blue-100 transition flex items-center justify-between"
+                        >
+                          <h3 className="text-sm font-bold text-blue-900 flex items-center gap-2">
+                            <Newspaper className="w-4 h-4 text-blue-600" />
+                            Affected News ({selectedRoute.newsDetails.length})
+                          </h3>
+                          <ChevronDown className={`w-4 h-4 text-blue-600 transition-transform ${expandedSections.news ? 'rotate-180' : ''}`} />
+                        </button>
+                        {expandedSections.news && (
+                          <div className="divide-y divide-blue-200">
+                            {selectedRoute.newsDetails?.map((newsItem: any, idx: number) => (
+                              newsItem && (
+                                <div key={idx} className="p-3 hover:bg-blue-100/50 transition">
+                                  <p className="text-xs font-bold text-blue-900 mb-1">{newsItem.title}</p>
+                                  {newsItem.description && (
+                                    <p className="text-xs text-blue-700 line-clamp-2 mb-1">{newsItem.description}</p>
+                                  )}
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    {newsItem.country && (
+                                      <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-bold">
+                                        {newsItem.country}
+                                      </span>
+                                    )}
+                                    {newsItem.category && (
+                                      <span className="text-[10px] bg-blue-200 text-blue-800 px-2 py-0.5 rounded font-bold">
+                                        {newsItem.category}
+                                      </span>
+                                    )}
+                                    {newsItem.sourceName && (
+                                      <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-semibold">
+                                        {newsItem.sourceName}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Collapsible Weather Section */}
+                    {selectedRoute.weatherDetails && selectedRoute.weatherDetails.length > 0 && (
+                      <div className="bg-orange-50 rounded-xl border border-orange-200 overflow-hidden">
+                        <button
+                          onClick={() => setExpandedSections(prev => ({ ...prev, weather: !prev.weather }))}
+                          className="w-full px-4 py-3 bg-orange-50 hover:bg-orange-100 transition flex items-center justify-between"
+                        >
+                          <h3 className="text-sm font-bold text-orange-900 flex items-center gap-2">
+                            <Wind className="w-4 h-4 text-orange-600" />
+                            Affected Weather ({selectedRoute.weatherDetails.length})
+                          </h3>
+                          <ChevronDown className={`w-4 h-4 text-orange-600 transition-transform ${expandedSections.weather ? 'rotate-180' : ''}`} />
+                        </button>
+                        {expandedSections.weather && (
+                          <div className="divide-y divide-orange-200">
+                            {selectedRoute.weatherDetails?.map((weatherItem: any, idx: number) => (
+                              weatherItem && (
+                                <div key={idx} className="p-3 hover:bg-orange-100/50 transition">
+                                  <p className="text-xs font-bold text-orange-900 mb-1">{weatherItem.locationName}</p>
+                                  <p className="text-xs text-orange-700 mb-1 font-semibold">{weatherItem.condition}</p>
+                                  <div className="grid grid-cols-2 gap-2 text-[10px] text-orange-800">
+                                    <div><span className="font-bold">Temp:</span> {weatherItem.temperatureC}°C</div>
+                                    <div><span className="font-bold">Speed:</span> {weatherItem.windKph} km/h</div>
+                                    <div><span className="font-bold">Lat:</span> {weatherItem.latitude?.toFixed(2)}</div>
+                                    <div><span className="font-bold">Lon:</span> {weatherItem.longitude?.toFixed(2)}</div>
+                                  </div>
+                                </div>
+                              )
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                 </div>

@@ -15,6 +15,8 @@ interface ShipReroute {
   affectedByWeather: any
   suggestion: string
   createdAt: string
+  newsDetails?: any[]
+  weatherDetails?: any[]
 }
 
 interface ShipReroutesMapClientProps {
