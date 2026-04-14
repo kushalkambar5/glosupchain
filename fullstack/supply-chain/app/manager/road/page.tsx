@@ -5,9 +5,16 @@ import { assignments, users, routes, drivers } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import ManagerPanelClient from '@/components/ManagerPanelClient'
 
+import { redirect } from 'next/navigation'
+
 export default async function RoadManagerPage() {
   const session = await getServerSession(authOptions)
-  const user = session?.user as any
+  
+  if (!session || !session.user) {
+    redirect('/login')
+  }
+
+  const user = session.user as any
 
   // Get all routes created by this manager
   const managerRoutes = await db

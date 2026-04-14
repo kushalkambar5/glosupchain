@@ -347,7 +347,7 @@ export default function Navbar() {
             )}
 
             {session && (user?.isVerified || user?.role === 'admin') && (
-              <Link href="/routes" onClick={() => setMobileMenuOpen(false)} className={mobileNavLinkClass(pathname?.includes('/routes'))}>
+              <Link href="/roads" onClick={() => setMobileMenuOpen(false)} className={mobileNavLinkClass(pathname?.includes('/roads'))}>
                 Routes
               </Link>
             )}

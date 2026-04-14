@@ -24,7 +24,7 @@ export default function Footer() {
             <h3 className="font-semibold text-white mb-4 poppins-semibold">Product</h3>
             <ul className="space-y-3 text-sm">
               <li>
-                <Link href="/routes" className="hover:text-green-400 transition">
+                <Link href="/roads" className="hover:text-green-400 transition">
                   Route Planning
                 </Link>
               </li>
