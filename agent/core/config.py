@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Agent configs
     LLM_PROVIDER: str = "gemini"  # gemini / openai
     LLM_API_KEY: str = ""
+    LLM_MODEL: str = "gemini-2.5-flash-lite"
 
     # Polling configs
     NEWS_FETCH_INTERVAL_MIN: int = 60

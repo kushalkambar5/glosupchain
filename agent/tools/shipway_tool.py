@@ -23,6 +23,7 @@ from db.session import SessionLocal
 from models.keyword import Keyword
 from models.shipwaysResult import ShipwayResult
 from models.news import News
+from core.config import settings
 
 import time
 
@@ -125,7 +126,7 @@ tool_node = ToolNode(tools)
 
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model=settings.LLM_MODEL,
     temperature=0.7,
     google_api_key=os.environ["GOOGLE_API_KEY"],
 )

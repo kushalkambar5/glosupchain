@@ -21,6 +21,7 @@ from models.weatherResult import WeatherResult
 from models.weather import Weather
 from models.shipReroutes import ShipReroute
 from dotenv import load_dotenv
+from core.config import settings
 
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(env_path)
@@ -34,7 +35,7 @@ class State(TypedDict):
 
 # --- LLM SETUP ---
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model=settings.LLM_MODEL,
     api_key=os.getenv("GOOGLE_API_KEY"),
     temperature=0.2
 )

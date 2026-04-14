@@ -18,6 +18,7 @@ from langchain_core.tools import tool
 from services.news_service import NewsService
 from services.weather_service import WeatherService
 from tools.memory_tool import update_longterm_memory
+from core.config import settings
 
 env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
 load_dotenv(env_path)
@@ -29,7 +30,7 @@ class State(TypedDict):
 
 # 2. LLM Setup
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model=settings.LLM_MODEL,
     api_key=os.getenv("GOOGLE_API_KEY"),
     temperature=0.7
 )
