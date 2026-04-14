@@ -172,6 +172,7 @@ export default function ShipReroutesMap({ reroutes }: ShipReroutesMapProps) {
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
           noWrap={true}
+          bounds={[[-90, -180], [90, 180]]}
         />
 
         {/* Render each reroute */}

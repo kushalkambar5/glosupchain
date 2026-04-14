@@ -118,6 +118,7 @@ export default function AffectedZonesMap({ zones }: AffectedZonesMapProps) {
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; CARTO',
         noWrap:      true,
+        bounds:      [[-90, -180], [90, 180]]
       }).addTo(map)
 
       // click map background = deselect
