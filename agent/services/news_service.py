@@ -18,8 +18,14 @@ class NewsService:
         self.client = NewsDataApiClient(apikey=settings.NEWS_API_KEY)
 
     def fetch_news(self, query: str):
-        response = self.client.latest_api(q=query, language="en", size=10)
-        return response.get("results", [])
+        try:
+            response = self.client.latest_api(q=query, language="en", size=10)
+            if not response or not isinstance(response, dict):
+                return []
+            return response.get("results", [])
+        except Exception as e:
+            print(f"[NewsService] Error fetching: {e}")
+            return []
 
     def store_news(self, articles: list, db: Session):
         added_count = 0

@@ -36,13 +36,50 @@ llm = ChatGoogleGenerativeAI(
 
 @tool
 def fetch_news(query: str):
-    """Fetch latest news strictly based on a query."""
-    return NewsService().fetch_news(query)
+    """Fetch latest news strictly based on a query. Returns a summary of titles and descriptions."""
+    try:
+        service = NewsService()
+        results = service.fetch_news(query)
+        
+        if not results:
+            return f"No news found for query: {query}"
+            
+        formatted_news = []
+        for i, item in enumerate(results[:5], 1): # Limit to 5 for efficiency
+            title = item.get("title", "No Title")
+            source = item.get("source_id", "Unknown")
+            desc = item.get("description", "No description available")
+            formatted_news.append(f"{i}. {title} (Source: {source})\n   {desc[:200]}...")
+            
+        return "\n\n".join(formatted_news)
+    except Exception as e:
+        return f"Error fetching news: {str(e)}"
 
 @tool
 def get_weather(city: str):
-    """Get the current weather for a specified city."""
-    return WeatherService().get_weather(city)
+    """Get the current weather for a specified city. Returns a concise text summary."""
+    try:
+        service = WeatherService()
+        data = service.get_weather(city)
+        
+        if "error" in data:
+            return f"Could not get weather for {city}: {data['error'].get('message', 'Unknown error')}"
+            
+        current = data.get("current", {})
+        location = data.get("location", {})
+        
+        temp = current.get("temp_c")
+        condition = current.get("condition", {}).get("text")
+        wind = current.get("wind_kph")
+        humidity = current.get("humidity")
+        
+        return (f"Current weather in {location.get('name')}, {location.get('country')}:\n"
+                f"- Temperature: {temp}°C\n"
+                f"- Condition: {condition}\n"
+                f"- Wind Speed: {wind} kph\n"
+                f"- Humidity: {humidity}%")
+    except Exception as e:
+        return f"Error fetching weather: {str(e)}"
 
 # Bind tools to LLM - use the default LLM for binding
 llm_with_tools = llm.bind_tools([fetch_news, get_weather, update_longterm_memory])
@@ -65,7 +102,6 @@ graph_builder.add_node("tools", ToolNode(all_tools))
 
 graph_builder.add_edge(START, "chatbot")
 graph_builder.add_conditional_edges("chatbot", tools_condition)
-graph_builder.add_edge("tools", "chatbot")
 graph_builder.add_edge("tools", "chatbot")
 
 # For testing, we just use InMemorySaver. 
