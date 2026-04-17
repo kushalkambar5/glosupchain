@@ -150,23 +150,25 @@ async def run_chat(user_id: str, is_logged_in: bool, prompt: str, thread_id: str
     # Indicate stream complete (optional)
     yield "data: [DONE]\n\n"
 
+async def main():
+    print("Testing pipeline with streaming...")
+    async for chunk in run_chat(
+        user_id="user_123", 
+        is_logged_in=True, 
+        prompt="Hello, my name is Bob. I care about extreme weather in Tokyo.", 
+        thread_id="thread_abc"
+    ):
+        print(chunk, end="", flush=True)
+
+    async for chunk in run_chat(
+        user_id="user_123", 
+        is_logged_in=True, 
+        prompt="What is the weather there? Also please remember my name and location.", 
+        thread_id="thread_abc",
+        longterm_memory="" # Would normally be fetched from the DB
+    ):
+        print(chunk, end="", flush=True)
+
 if __name__ == "__main__":
     import asyncio
-    print("Testing pipeline with streaming...")
-    asyncio.run(
-        run_chat(
-            user_id="user_123", 
-            is_logged_in=True, 
-            prompt="Hello, my name is Bob. I care about extreme weather in Tokyo.", 
-            thread_id="thread_abc"
-        )
-    )
-    asyncio.run(
-        run_chat(
-            user_id="user_123", 
-            is_logged_in=True, 
-            prompt="What is the weather there? Also please remember my name and location.", 
-            thread_id="thread_abc",
-            longterm_memory="" # Would normally be fetched from the DB
-        )
-    )
+    asyncio.run(main())
